@@ -1,0 +1,483 @@
+three_site_models:
+  description: >
+    Three-site water models place charges on three interaction sites
+    (one oxygen, two hydrogens). Computationally cheapest class of
+    explicit water models. Most widely used in biomolecular simulations.
+
+  TIP3P:
+    sites: 3
+    charges:
+      O: -0.834
+      H: +0.417
+    geometry:
+      OH_bond_nm: 0.09572
+      HOH_angle_deg: 104.52
+    properties:
+      density_gcm3: 0.982
+      diffusion_coefficient_m2s: 5.19e-9
+      dielectric_constant: 94.0
+      melting_point_K: 146.0
+    notes: >
+      Most widely used water model in biomolecular simulations.
+      Overestimates diffusion coefficient (~2x experimental value
+      of 2.3e-9 m²/s). Density slightly underestimated at 300 K.
+      Fast and computationally cheap. Default choice for AMBER and
+      CHARMM force fields. Poor representation of liquid water
+      structure at interfaces. Despite known deficiencies, extensive
+      validation with AMBER and CHARMM force fields makes it the
+      pragmatic standard choice.
+    compatible_force_fields:
+      primary:
+        - amber99sb
+        - amber99sb-ildn
+        - amber14sb
+        - charmm27
+      acceptable:
+        - oplsaa
+        - oplsaal
+      not_recommended:
+        - gromos53a6
+        - gromos54a7
+        - gromos54a8
+    gromacs_topology_file: tip3p.itp
+    gromacs_water_model_flag: tip3p
+    gromacs_structure_file: spc216.gro
+
+  TIP3P-CHARMM:
+    sites: 3
+    description: >
+      Modified TIP3P with Lennard-Jones parameters on hydrogen atoms.
+      Specifically parameterized for use with CHARMM force fields.
+      NOT interchangeable with standard TIP3P despite similar name.
+    charges:
+      O: -0.834
+      H: +0.417
+    geometry:
+      OH_bond_nm: 0.09572
+      HOH_angle_deg: 104.52
+    lj_on_hydrogen: true
+    properties:
+      density_gcm3: 0.985
+      diffusion_coefficient_m2s: 5.0e-9
+      dielectric_constant: 94.0
+    notes: >
+      Must use CHARMM-specific TIP3P when using CHARMM36/36m.
+      Using standard TIP3P with CHARMM36 is a common and serious
+      mistake that leads to incorrect water structure and dynamics.
+      The addition of LJ parameters on hydrogen atoms is required
+      for correct CHARMM non-bonded interactions.
+    compatible_force_fields:
+      primary:
+        - charmm36
+        - charmm36m
+      not_recommended:
+        - amber99sb
+        - amber99sb-ildn
+        - amber14sb
+        - oplsaa
+        - gromos53a6
+        - gromos54a7
+    gromacs_topology_file: tip3p_charmm.itp
+    gromacs_structure_file: spc216.gro
+    critical_warning: >
+      Do NOT substitute standard TIP3P for TIP3P-CHARMM when
+      using CHARMM36 or CHARMM36m force fields. The missing
+      LJ parameters on hydrogen will give wrong protein-water
+      interactions and incorrect thermodynamic properties.
+
+  SPC:
+    sites: 3
+    charges:
+      O: -0.82
+      H: +0.41
+    geometry:
+      OH_bond_nm: 0.1
+      HOH_angle_deg: 109.47
+    properties:
+      density_gcm3: 0.971
+      diffusion_coefficient_m2s: 3.85e-9
+      dielectric_constant: 65.0
+      melting_point_K: 190.0
+    notes: >
+      Simple Point Charge model. Tetrahedral geometry (109.47°).
+      Historically used with GROMOS force fields. Lower dielectric
+      constant than experiment (78.4). Faster than SPC/E due to
+      simpler parameterization. Superseded by SPC/E for most
+      applications but still used with some GROMOS protocols.
+    compatible_force_fields:
+      primary:
+        - gromos53a6
+        - gromos54a7
+      acceptable:
+        - gromos54a8
+      not_recommended:
+        - amber99sb
+        - amber99sb-ildn
+        - amber14sb
+        - charmm36
+        - charmm36m
+        - oplsaa
+    gromacs_topology_file: spc.itp
+    gromacs_water_model_flag: spc
+    gromacs_structure_file: spc216.gro
+
+  SPCE:
+    sites: 3
+    charges:
+      O: -0.8476
+      H: +0.4238
+    geometry:
+      OH_bond_nm: 0.1
+      HOH_angle_deg: 109.47
+    properties:
+      density_gcm3: 1.008
+      diffusion_coefficient_m2s: 2.49e-9
+      dielectric_constant: 71.0
+      melting_point_K: 215.0
+    notes: >
+      Extended Simple Point Charge. Better density and diffusion
+      than SPC. Diffusion coefficient closer to experimental value
+      (2.3e-9 m²/s). Recommended over SPC for most GROMOS simulations.
+      Also compatible with OPLS-AA as an alternative to TIP4P when
+      computational speed is prioritized over accuracy.
+    compatible_force_fields:
+      primary:
+        - gromos53a6
+        - gromos54a7
+        - gromos54a8
+      acceptable:
+        - oplsaa
+        - oplsaal
+      not_recommended:
+        - amber99sb
+        - amber99sb-ildn
+        - amber14sb
+        - charmm36
+        - charmm36m
+    gromacs_topology_file: spce.itp
+    gromacs_water_model_flag: spce
+    gromacs_structure_file: spc216.gro
+
+
+four_site_models:
+  description: >
+    Four-site water models place a virtual interaction site (M-site)
+    displaced from the oxygen along the H-O-H bisector. Better
+    electrostatic representation than three-site models at moderate
+    additional computational cost.
+
+  TIP4P:
+    sites: 4
+    virtual_site: M-site displaced from O toward H-O-H bisector
+    charges:
+      O: 0.0
+      H: +0.52
+      M: -1.04
+    geometry:
+      OH_bond_nm: 0.09572
+      HOH_angle_deg: 104.52
+      OM_distance_nm: 0.015
+    properties:
+      density_gcm3: 0.999
+      diffusion_coefficient_m2s: 3.29e-9
+      dielectric_constant: 53.0
+      melting_point_K: 232.0
+    notes: >
+      Better density than TIP3P. Lower dielectric constant than
+      experiment (78.4). Recommended for OPLS-AA. Computationally
+      more expensive than 3-site models due to virtual site handling.
+      Original parameterization predates widespread PME use —
+      prefer TIP4P-EW for modern simulations with PME electrostatics.
+    compatible_force_fields:
+      primary:
+        - oplsaa
+        - oplsaal
+      acceptable:
+        - amber99sb
+        - amber99sb-ildn
+      not_recommended:
+        - charmm36
+        - charmm36m
+        - gromos53a6
+        - gromos54a7
+    gromacs_topology_file: tip4p.itp
+    gromacs_water_model_flag: tip4p
+    gromacs_structure_file: tip4p.gro
+
+  TIP4P-EW:
+    sites: 4
+    virtual_site: M-site displaced from O toward H-O-H bisector
+    charges:
+      O: 0.0
+      H: +0.52422
+      M: -1.04844
+    geometry:
+      OH_bond_nm: 0.09572
+      HOH_angle_deg: 104.52
+      OM_distance_nm: 0.0125
+    properties:
+      density_gcm3: 0.9956
+      diffusion_coefficient_m2s: 2.4e-9
+      dielectric_constant: 62.9
+      melting_point_K: 245.0
+    notes: >
+      TIP4P reparameterized specifically for use with Ewald summation
+      methods (PME). Designed for modern MD simulations with PME
+      electrostatics. Better density and diffusion than TIP4P.
+      Preferred over TIP4P when using PME (which is standard).
+      Good balance of accuracy and compatibility with AMBER force fields.
+    compatible_force_fields:
+      primary:
+        - amber99sb
+        - amber99sb-ildn
+        - amber14sb
+      acceptable:
+        - oplsaa
+        - oplsaal
+      not_recommended:
+        - charmm36
+        - charmm36m
+        - gromos53a6
+        - gromos54a7
+    gromacs_topology_file: tip4pew.itp
+    gromacs_water_model_flag: tip4pew
+    gromacs_structure_file: tip4p.gro
+
+  TIP4P-2005:
+    sites: 4
+    virtual_site: M-site displaced from O toward H-O-H bisector
+    charges:
+      O: 0.0
+      H: +0.5564
+      M: -1.1128
+    geometry:
+      OH_bond_nm: 0.09572
+      HOH_angle_deg: 104.52
+      OM_distance_nm: 0.01546
+    properties:
+      density_gcm3: 0.9998
+      diffusion_coefficient_m2s: 2.08e-9
+      dielectric_constant: 60.0
+      melting_point_K: 252.0
+    notes: >
+      Reparameterized TIP4P optimized for bulk water properties
+      across a wide temperature range. Best overall water model
+      for structural and dynamic properties. Closest to experimental
+      diffusion coefficient (2.3e-9 m²/s). Recommended when accurate
+      water properties are critical. Not specifically parameterized
+      with any major biomolecular FF but increasingly used with
+      AMBER and CHARMM variants. Excellent choice for studies
+      involving water structure, hydration shells, or thermodynamic
+      properties of water. Recommended for IDP simulations with
+      CHARMM36m.
+    compatible_force_fields:
+      primary:
+        - amber99sb-ildn
+        - amber14sb
+      acceptable:
+        - charmm36m
+        - oplsaa
+        - oplsaal
+      not_recommended:
+        - gromos53a6
+        - gromos54a7
+        - gromos54a8
+    gromacs_topology_file: tip4p2005.itp
+    gromacs_water_model_flag: tip4p2005
+    gromacs_structure_file: tip4p.gro
+
+  TIP4P-D:
+    sites: 4
+    description: >
+      TIP4P variant specifically designed for simulations of
+      intrinsically disordered proteins (IDPs). Increases the
+      dispersion interactions of water to better reproduce
+      IDP ensemble properties.
+    properties:
+      density_gcm3: 0.993
+      diffusion_coefficient_m2s: 2.0e-9
+      dielectric_constant: 59.0
+    notes: >
+      Specifically designed for IDP simulations with AMBER force
+      fields. Gives better agreement with experimental SAXS and
+      NMR data for disordered proteins than TIP3P or TIP4P-2005.
+      Not recommended for folded protein simulations — use TIP3P
+      or TIP4P-EW instead.
+    compatible_force_fields:
+      primary:
+        - amber14sb
+        - amber99sb-ildn
+      not_recommended:
+        - charmm36
+        - charmm36m
+        - gromos53a6
+        - oplsaa
+    use_case: intrinsically_disordered_proteins
+    gromacs_topology_file: tip4pd.itp
+
+
+five_site_models:
+  description: >
+    Five-site water models place two lone pair virtual sites on oxygen
+    in addition to the three atomic sites. Best structural properties
+    but highest computational cost. Rarely used in biomolecular
+    simulations due to overhead not justified for most applications.
+
+  TIP5P:
+    sites: 5
+    virtual_sites: two lone pair sites on oxygen
+    charges:
+      O: 0.0
+      H: +0.241
+      LP: -0.241
+    geometry:
+      OH_bond_nm: 0.09572
+      HOH_angle_deg: 104.52
+      OLP_distance_nm: 0.07
+      LP_angle_deg: 109.47
+    properties:
+      density_gcm3: 0.979
+      diffusion_coefficient_m2s: 2.62e-9
+      dielectric_constant: 81.5
+      melting_point_K: 274.0
+    notes: >
+      Excellent structural properties and dielectric constant —
+      closest to experimental dielectric constant (78.4) among
+      common water models. Computationally expensive due to two
+      virtual sites. Rarely used in biomolecular simulations —
+      overhead not justified for most protein studies. Consider
+      for studies where accurate water dielectric properties are
+      critical. Density slightly underestimated at 300 K.
+      No major biomolecular force field was specifically
+      parameterized with TIP5P.
+    compatible_force_fields:
+      primary: []
+      acceptable:
+        - amber99sb-ildn
+        - oplsaa
+      not_recommended:
+        - charmm36
+        - charmm36m
+        - gromos53a6
+        - gromos54a7
+      notes: >
+        No major biomolecular force field was specifically
+        parameterized with TIP5P. Use with caution and validate
+        carefully against experimental data.
+    gromacs_topology_file: tip5p.itp
+    gromacs_water_model_flag: tip5p
+    gromacs_structure_file: tip5p.gro
+
+
+water_model_selection_guide:
+  description: >
+    Decision guide for selecting the appropriate water model
+    based on system type and scientific priorities.
+
+  by_system_type:
+    standard_folded_protein:
+      recommended:
+        - TIP3P
+        - SPCE
+        - TIP4P-EW
+      notes: >
+        TIP3P for AMBER/CHARMM (speed priority).
+        SPC/E for GROMOS (accuracy/speed balance).
+        TIP4P-EW for AMBER when water accuracy matters.
+
+    intrinsically_disordered_protein:
+      recommended:
+        - TIP4P-2005
+        - TIP4P-D
+      acceptable:
+        - TIP3P
+      avoid:
+        - TIP3P with AMBER ff99SB-ILDN
+      notes: >
+        TIP4P-2005 with CHARMM36m is well-validated for IDPs.
+        TIP4P-D with AMBER ff14SB is recommended for AMBER-based
+        IDP simulations.
+
+    membrane_protein:
+      recommended:
+        - TIP3P-CHARMM
+        - TIP3P
+      notes: >
+        CHARMM36 with CHARMM-TIP3P is the gold standard for
+        membrane protein simulations.
+
+    protein_ligand_complex:
+      recommended:
+        - TIP3P
+        - TIP4P-EW
+      notes: >
+        Follow the recommendation for the protein force field.
+        TIP3P for AMBER-based, TIP3P-CHARMM for CHARMM-based.
+
+    nucleic_acids:
+      recommended:
+        - TIP3P
+        - TIP4P-EW
+      notes: >
+        TIP3P with AMBER nucleic acid parameters is standard.
+        Higher ion concentration required for nucleic acid stability.
+
+    thermodynamic_property_studies:
+      recommended:
+        - TIP4P-2005
+        - TIP4P-EW
+      notes: >
+        Best reproduction of experimental water thermodynamics.
+        Use when water properties themselves are part of the study.
+
+  by_priority:
+    computational_speed:
+      ranking:
+        1: TIP3P
+        2: SPC
+        3: SPCE
+        4: TIP4P-EW
+        5: TIP4P-2005
+        6: TIP5P
+
+    accuracy_bulk_water:
+      ranking:
+        1: TIP4P-2005
+        2: TIP4P-EW
+        3: SPCE
+        4: TIP5P
+        5: TIP4P
+        6: TIP3P
+
+    accuracy_protein_dynamics:
+      ranking:
+        1: TIP4P-2005
+        2: TIP4P-EW
+        3: TIP3P
+        4: SPCE
+      notes: >
+        Ranking for protein dynamics accuracy is force-field dependent.
+        Always use the water model recommended for your chosen force field.
+
+
+water_structure_files:
+  description: >
+    Mapping of water models to their GROMACS structure files.
+    Used by gmx solvate -cs flag. Critical to use the correct
+    structure file for the chosen water model.
+
+  tip3p: spc216.gro
+  tip3p_charmm: spc216.gro
+  spc: spc216.gro
+  spce: spc216.gro
+  tip4p: tip4p.gro
+  tip4p_ew: tip4p.gro
+  tip4p_2005: tip4p.gro
+  tip4p_d: tip4p.gro
+  tip5p: tip5p.gro
+  notes: >
+    TIP3P, SPC, and SPC/E all use spc216.gro as the initial
+    water configuration — they differ only in parameters, not
+    initial geometry. Using the wrong structure file is a common
+    mistake that does not cause an immediate error but produces
+    a poorly equilibrated starting configuration.

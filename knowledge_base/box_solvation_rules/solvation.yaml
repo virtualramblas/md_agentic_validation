@@ -1,0 +1,457 @@
+description: >
+  Rules governing the addition of explicit water molecules to the
+  simulation system. Proper solvation is critical for physical
+  realism and simulation stability. All rules apply to explicit
+  solvent simulations. Implicit solvent simulations are not
+  covered by this knowledge base.
+
+water_shell_rules:
+  description: >
+    Rules defining the minimum thickness of the water shell
+    surrounding the solute. The water shell must be thick enough
+    to prevent solute-image interactions, allow proper hydration
+    of all surface residues, and accommodate conformational
+    fluctuations during the simulation.
+
+  minimum_water_shell_thickness:
+    standard_nm: 1.0
+    recommended_nm: 1.2
+    for_charged_proteins_nm: 1.5
+    for_IDPs_nm: 1.5
+    for_membrane_systems: not_applicable
+    notes: >
+      The water shell thickness is set by the -d flag in gmx editconf
+      and defines the minimum distance from any solute atom to the
+      nearest box face. 1.2 nm is the recommended standard for most
+      protein simulations. Thinner shells risk PBC artifacts during
+      conformational sampling; thicker shells increase cost without
+      significant benefit for folded proteins.
+
+  water_shell_validation:
+    check_method: >
+      After solvation, verify minimum distance from any protein
+      atom to the nearest box face is greater than or equal to
+      the required water shell thickness for the system type.
+    gromacs_tool: gmx editconf -d flag sets this distance
+    post_solvation_check: >
+      Run gmx check on the solvated .gro file to verify box
+      dimensions and atom counts are consistent with expectations.
+    severity_if_violated: ERROR
+
+
+water_molecule_counts:
+  description: >
+    Rules and guidelines for the number of water molecules
+    required for valid explicit solvent simulations.
+
+  minimum_water_molecules:
+    absolute_minimum: 1000
+    recommended_minimum: 5000
+    notes: >
+      Fewer than 1000 water molecules is insufficient for proper
+      bulk water behavior and hydration shell formation. Systems
+      with fewer than 1000 waters show significant finite-size
+      effects in thermodynamic properties. 5000 or more water
+      molecules recommended for standard protein simulations to
+      ensure adequate bulk water region beyond the first and
+      second hydration shells.
+    severity_below_absolute_minimum: ERROR
+    severity_below_recommended_minimum: WARNING
+
+  water_to_protein_ratio:
+    minimum_ratio: 5.0
+    recommended_ratio: 10.0
+    unit: water_molecules_per_protein_residue
+    notes: >
+      Rule of thumb: at least 5 water molecules per protein residue,
+      10 or more recommended. A 100-residue protein should have at
+      least 500 water molecules, ideally 1000 or more. This ratio
+      ensures adequate solvation of all surface residues and a
+      sufficient bulk water region.
+    example:
+      protein_residues: 150
+      minimum_waters: 750
+      recommended_waters: 1500
+      typical_actual_waters: 10000
+    severity_below_minimum: WARNING
+
+  system_size_guidelines:
+    small_system:
+      protein_residues_range: less_than_100
+      typical_water_count: 5000_to_10000
+      typical_total_atoms: 15000_to_30000
+    medium_system:
+      protein_residues_range: 100_to_500
+      typical_water_count: 10000_to_30000
+      typical_total_atoms: 30000_to_100000
+    large_system:
+      protein_residues_range: 500_to_2000
+      typical_water_count: 30000_to_100000
+      typical_total_atoms: 100000_to_350000
+    very_large_system:
+      protein_residues_range: greater_than_2000
+      typical_water_count: greater_than_100000
+      typical_total_atoms: greater_than_350000
+      notes: >
+        Very large systems may require HPC resources and careful
+        consideration of simulation length versus system size.
+        Ensure sufficient computational resources before proceeding.
+
+  membrane_system_water_counts:
+    water_layers_above_below_membrane_nm: 3.0
+    minimum_water_per_lipid: 30
+    recommended_water_per_lipid: 40
+    notes: >
+      Membrane systems require sufficient water on both sides of
+      the bilayer. 3.0 nm water layer on each side is standard.
+      Fewer than 30 water molecules per lipid leads to dehydration
+      artifacts in the headgroup region and incorrect membrane
+      properties. 40 or more water molecules per lipid recommended
+      for production simulations.
+
+
+solvation_protocol:
+  description: >
+    Step-by-step protocol for solvation that the agent must follow
+    and the validator must verify. Each step has defined inputs,
+    outputs, and validation checks.
+
+  step_1_prepare_box:
+    tool: gmx editconf
+    purpose: >
+      Define the simulation box geometry and center the solute.
+      Must be performed before solvation.
+    required_flags:
+      - flag: "-f"
+        description: Input structure file (post-EM .gro or PDB)
+      - flag: "-o"
+        description: Output structure file with box definition
+      - flag: "-c"
+        description: Center molecule in box
+      - flag: "-d"
+        value_recommended: 1.2
+        description: >
+          Minimum distance from solute to box edge in nm.
+          Use 1.5 for IDPs or charged proteins.
+      - flag: "-bt"
+        description: >
+          Box type. Use dodecahedron for globular proteins,
+          triclinic for membranes and elongated molecules.
+    validation_checks:
+      - output_gro_exists: true
+      - box_dimensions_satisfy_minimum_image: true
+      - solute_centered_in_box: true
+      - solute_to_edge_distance_sufficient: true
+
+  step_2_add_water:
+    tool: gmx solvate
+    purpose: >
+      Fill the simulation box with water molecules. Updates
+      the topology file with the correct water molecule count.
+    required_flags:
+      - flag: "-cp"
+        description: Input structure with box definition
+      - flag: "-cs"
+        description: >
+          Water model structure file. Must match chosen water model.
+          See water_structure_file_mapping below.
+      - flag: "-o"
+        description: Output solvated structure file
+      - flag: "-p"
+        description: >
+          Topology file. Updated automatically by gmx solvate
+          with the correct number of water molecules.
+    water_structure_file_mapping:
+      TIP3P: spc216.gro
+      TIP3P-CHARMM: spc216.gro
+      SPC: spc216.gro
+      SPCE: spc216.gro
+      TIP4P: tip4p.gro
+      TIP4P-EW: tip4p.gro
+      TIP4P-2005: tip4p.gro
+      TIP4P-D: tip4p.gro
+      TIP5P: tip5p.gro
+      critical_note: >
+        TIP3P, SPC, and SPC/E all use spc216.gro as the initial
+        water configuration — they differ only in force field
+        parameters, not initial geometry. Using the wrong structure
+        file does not cause an immediate error but produces a poorly
+        equilibrated starting configuration that requires longer
+        equilibration. Always verify the structure file matches
+        the water model.
+    validation_checks:
+      - water_count_above_absolute_minimum: true
+      - topology_updated_with_water_molecules: true
+      - water_model_structure_file_matches_ff_water_model: true
+      - no_overlapping_atoms_in_output: true
+      - output_gro_exists: true
+
+  step_3_verify_solvation:
+    description: >
+      Post-solvation verification checks to confirm the solvated
+      system is physically reasonable before proceeding to ionization.
+    checks:
+
+      atom_count_consistency:
+        description: >
+          Total atoms in .gro file must equal the sum of all
+          molecular components.
+        formula: >
+          total_atoms = protein_atoms
+                      + (sites_per_water * n_water_molecules)
+                      + ligand_atoms
+                      + cofactor_atoms
+          where sites_per_water:
+            3-site models (TIP3P, SPC, SPCE): 3
+            4-site models (TIP4P, TIP4P-EW, TIP4P-2005): 4
+            5-site models (TIP5P): 5
+        severity: ERROR
+        message: >
+          Atom count mismatch after solvation. GRO file contains
+          {gro_count} atoms but calculated total is {calc_count}.
+          Topology and structure file are inconsistent.
+
+      topology_water_count_matches_gro:
+        description: >
+          Number of water molecules in topology molecules section
+          must match number of water molecules in .gro file.
+        severity: ERROR
+        message: >
+          Topology water count ({top_count}) does not match
+          structure file water count ({gro_count}). The topology
+          was not correctly updated by gmx solvate or was manually
+          edited incorrectly after solvation.
+
+      minimum_water_count_satisfied:
+        check: n_water_molecules >= 1000
+        severity: ERROR
+        message: >
+          Only {n_water} water molecules in system after solvation.
+          Minimum required: 1000. Increase box size using a larger
+          -d value in gmx editconf and re-run solvation.
+
+      recommended_water_count_satisfied:
+        check: n_water_molecules >= 5000
+        severity: WARNING
+        message: >
+          Only {n_water} water molecules in system. Recommended
+          minimum: 5000. Consider increasing box size for more
+          reliable bulk water behavior and thermodynamic properties.
+
+      water_to_residue_ratio:
+        check: n_water_molecules / n_protein_residues >= 5.0
+        severity: WARNING
+        message: >
+          Water-to-residue ratio {ratio:.1f} is below recommended
+          minimum of 5.0. System may be under-solvated. Consider
+          increasing box size.
+
+      box_fill_fraction:
+        description: >
+          Fraction of box volume occupied by water should be
+          within a physically reasonable range.
+        expected_range:
+          minimum: 0.55
+          maximum: 0.80
+        formula: >
+          water_volume = n_water * volume_per_water_molecule
+          volume_per_water_molecule_nm3: 0.030
+          fill_fraction = water_volume / box_volume
+        severity: WARNING
+        message: >
+          Box water fill fraction {fraction:.2f} is outside expected
+          range [0.55, 0.80]. This may indicate solvation problems
+          such as insufficient water molecules or incorrect box size.
+
+      no_water_inside_protein:
+        description: >
+          Verify no water molecules were placed inside the protein
+          core during solvation. gmx solvate uses a distance cutoff
+          but occasionally places waters in buried cavities.
+        check: >
+          No water oxygen within 0.2 nm of any protein heavy atom
+          that is not a surface-exposed residue.
+        severity: WARNING
+        message: >
+          Water molecules detected within protein interior.
+          This may indicate solvation artifacts. Inspect the
+          structure visually and consider re-running solvation
+          with a stricter overlap distance.
+
+
+topology_requirements:
+  description: >
+    Requirements for the topology file before and after solvation.
+
+  before_solvation:
+    required_sections:
+      - "[ defaults ]"
+      - "[ atomtypes ]"
+      - "[ moleculetype ] for protein"
+      - "[ atoms ]"
+      - "[ bonds ]"
+      - "[ system ]"
+      - "[ molecules ]"
+    required_includes:
+      - force_field_itp: true
+      - posre_itp: true
+      - water_itp: true
+      notes: >
+        The water .itp file must be included in the topology
+        before solvation so that gmx solvate can update the
+        molecule count correctly.
+
+  after_solvation:
+    molecules_section_order:
+      1: protein_or_solute
+      2: ligand_or_cofactor_if_present
+      3: water_molecules
+      notes: >
+        Ions are added after solvation by gmx genion and will
+        appear after water in the molecules section. The order
+        protein → ligand → water → ions is the GROMACS convention
+        and must be maintained. Wrong order causes grompp errors.
+    water_count_updated: true
+    topology_consistent_with_gro: true
+
+  water_itp_files:
+    TIP3P: tip3p.itp
+    TIP3P-CHARMM: tip3p_charmm.itp
+    SPC: spc.itp
+    SPCE: spce.itp
+    TIP4P: tip4p.itp
+    TIP4P-EW: tip4pew.itp
+    TIP4P-2005: tip4p2005.itp
+    TIP5P: tip5p.itp
+    notes: >
+      The water .itp file included in the topology must match
+      the water model used in gmx solvate. Mismatches between
+      the topology water parameters and the structure file water
+      geometry cause grompp errors or incorrect simulations.
+
+
+solvation_validation_checks:
+  description: >
+    Complete list of solvation-specific validation checks.
+    Numbered BS005-BS010 to match the full validation checks registry.
+
+  BS005:
+    name: Minimum water molecule count
+    check: n_water_molecules >= 1000
+    severity: ERROR
+    message: >
+      Only {n_water} water molecules in system. Minimum required:
+      1000. Increase box size or solute-to-edge distance and
+      re-run solvation.
+
+  BS006:
+    name: Recommended water molecule count
+    check: n_water_molecules >= 5000
+    severity: WARNING
+    message: >
+      Only {n_water} water molecules. Recommended minimum: 5000.
+      Consider increasing box size for more reliable bulk water
+      behavior and thermodynamic properties.
+
+  BS007:
+    name: Water to protein ratio
+    check: n_water_molecules / n_protein_residues >= 5.0
+    severity: WARNING
+    message: >
+      Water-to-residue ratio {ratio:.1f} is below recommended
+      minimum of 5.0. System may be under-solvated. Consider
+      increasing box size.
+
+  BS008:
+    name: Water structure file matches water model
+    check: >
+      water_structure_file matches expected_file_for_water_model
+      from water_structure_file_mapping
+    severity: ERROR
+    message: >
+      Water structure file {file} does not match water model
+      {model}. Expected: {expected_file}. Using the wrong
+      structure file produces an incorrectly equilibrated
+      starting configuration.
+
+  BS009:
+    name: Topology water count matches structure file
+    check: topology_water_count == gro_water_count
+    severity: ERROR
+    message: >
+      Topology water count ({top_count}) does not match structure
+      file water count ({gro_count}). Topology was not correctly
+      updated after solvation or was manually edited incorrectly.
+
+  BS010:
+    name: Box fill fraction reasonable
+    check: 0.55 <= water_volume_fraction <= 0.80
+    severity: WARNING
+    message: >
+      Box water fill fraction {fraction:.2f} is outside expected
+      range [0.55, 0.80]. This may indicate solvation problems.
+      Inspect the solvated structure visually.
+
+
+common_solvation_mistakes:
+  description: >
+    Catalog of frequent mistakes during the solvation step.
+
+  wrong_water_structure_file:
+    description: >
+      Using spc216.gro for TIP4P or tip4p.gro for TIP3P.
+    consequence: >
+      Incorrect initial water geometry. Does not cause immediate
+      error but requires longer equilibration and may produce
+      subtle artifacts.
+    detection: >
+      Check that -cs flag in gmx solvate matches the water model
+      defined in the topology and force field.
+    severity: ERROR
+
+  topology_not_updated:
+    description: >
+      Running gmx solvate without -p flag so topology is not
+      updated with water molecule count.
+    consequence: >
+      Topology and structure file are inconsistent. grompp will
+      fail with atom count mismatch error.
+    detection: >
+      Verify topology molecules section contains water entry
+      with non-zero count after solvation.
+    severity: ERROR
+
+  solvating_before_box_definition:
+    description: >
+      Running gmx solvate before gmx editconf to define the box.
+    consequence: >
+      gmx solvate requires a box definition in the input structure.
+      Will fail with no box information error.
+    detection: >
+      Verify box vectors are present in input .gro file before
+      running gmx solvate.
+    severity: ERROR
+
+  water_inside_protein:
+    description: >
+      Water molecules placed inside buried protein cavities
+      during solvation.
+    consequence: >
+      Unphysical starting configuration. May cause instability
+      during energy minimization or early equilibration.
+    detection: >
+      Check minimum distance between water oxygens and protein
+      heavy atoms. Flag any water within 0.2 nm of buried residues.
+    severity: WARNING
+
+  insufficient_box_size:
+    description: >
+      Box too small resulting in too few water molecules or
+      violation of minimum image convention.
+    consequence: >
+      PBC artifacts, insufficient bulk water, incorrect
+      thermodynamic properties.
+    detection: >
+      Check water molecule count and box dimensions against
+      minimum requirements.
+    severity: ERROR

@@ -1,0 +1,640 @@
+description: >
+  Complete registry of all box geometry, solvation, and ionization
+  validation checks performed by the Box/Solvation Validator tool
+  in Layer 1. Checks are organized by stage (pre-solvation,
+  post-solvation, post-ionization, cross-checks) and numbered
+  BS001-BS020 for traceability. Each check defines its condition,
+  severity, and the exact message returned to the agent.
+
+metadata:
+  total_checks: 20
+  check_id_prefix: BS
+  severity_levels:
+    ERROR: >
+      Must be resolved before simulation can proceed.
+      Simulation agent is blocked until corrected.
+    WARNING: >
+      Should be reviewed. Simulation can proceed but
+      the issue may affect scientific validity.
+    INFO: >
+      Informational only. No action required but
+      noted in the validation report.
+
+
+pre_solvation_checks:
+  description: >
+    Checks performed after box definition (gmx editconf) but
+    before solvation (gmx solvate). Validate box geometry and
+    dimensions before water molecules are added.
+
+  BS001:
+    name: Box type appropriate for system type
+    stage: pre_solvation
+    check_logic: >
+      recommended_box = box_type_selection_guide[system_type]
+      proposed_box = box_type from editconf command
+      if proposed_box != recommended_box:
+        return WARNING
+    severity: WARNING
+    applicable_system_types:
+      - protein_in_water
+      - protein_ligand
+      - membrane_protein
+      - nucleic_acid
+      - IDP
+    message: >
+      Box type '{box_type}' is not recommended for system type
+      '{system_type}'. Recommended box type: '{recommended_box_type}'.
+      Using a suboptimal box type increases computational cost but
+      does not affect simulation correctness. Consider regenerating
+      the box with the recommended type to reduce the number of
+      solvent molecules and improve performance.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx editconf with -bt {recommended_box_type} flag.
+
+  BS002:
+    name: Minimum image convention satisfied
+    stage: pre_solvation
+    check_logic: >
+      For cubic and rectangular boxes:
+        effective_radius = min(box_x, box_y, box_z) / 2
+      For dodecahedron:
+        effective_radius = box_vector * sqrt(2) / 2
+      For octahedron:
+        effective_radius = box_vector * sqrt(3) / 3
+      if effective_radius <= rcoulomb:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Box dimensions violate the minimum image convention.
+      Effective box radius = {effective_radius:.3f} nm is less
+      than or equal to rcoulomb = {rcoulomb:.3f} nm.
+      A particle would interact with its own periodic image,
+      introducing severe and undetectable simulation artifacts.
+      Increase box size using a larger -d value in gmx editconf
+      or reduce the cutoff radius in the MDP file.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx editconf with -d {recommended_d:.1f} to ensure
+      effective_radius > {rcoulomb:.1f} nm.
+      Minimum required -d value: {min_d:.2f} nm.
+
+  BS003:
+    name: Solute to box edge distance sufficient
+    stage: pre_solvation
+    check_logic: >
+      required_distance = minimum_solute_to_box_edge_distance[system_type]
+      actual_distance = min distance from any solute atom to box face
+      if actual_distance < required_distance:
+        return ERROR
+      elif actual_distance < recommended_distance:
+        return WARNING
+    severity_below_minimum: ERROR
+    severity_below_recommended: WARNING
+    applicable_system_types:
+      - protein_in_water
+      - protein_ligand
+      - IDP
+      - nucleic_acid
+    thresholds:
+      protein_in_water:
+        minimum_nm: 1.0
+        recommended_nm: 1.2
+      protein_ligand:
+        minimum_nm: 1.0
+        recommended_nm: 1.2
+      IDP:
+        minimum_nm: 1.2
+        recommended_nm: 1.5
+      nucleic_acid:
+        minimum_nm: 1.2
+        recommended_nm: 1.5
+    message_error: >
+      Minimum solute-to-box-edge distance {actual:.3f} nm is less
+      than required {minimum:.1f} nm for system type '{system_type}'.
+      Risk of solute interacting with its periodic image during
+      conformational sampling. Regenerate box with larger -d value
+      in gmx editconf.
+    message_warning: >
+      Solute-to-box-edge distance {actual:.3f} nm is below
+      recommended {recommended:.1f} nm for system type '{system_type}'.
+      Consider regenerating box with -d {recommended:.1f} to provide
+      adequate buffer for conformational fluctuations.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx editconf with -d {recommended_d:.1f} flag.
+
+  BS004:
+    name: Box dimensions above absolute minimum
+    stage: pre_solvation
+    check_logic: >
+      for each dimension in [box_x, box_y, box_z]:
+        if dimension < 3.0:
+          return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Box dimension {dim_name} = {dim_value:.3f} nm is below the
+      absolute minimum of 3.0 nm. This box is too small for any
+      meaningful explicit solvent simulation. Regenerate with
+      larger box dimensions.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx editconf with -d value large enough to produce
+      all box dimensions >= 3.0 nm.
+
+
+post_solvation_checks:
+  description: >
+    Checks performed after solvation (gmx solvate) but before
+    ionization (gmx genion). Validate water molecule counts,
+    topology consistency, and solvation quality.
+
+  BS005:
+    name: Minimum water molecule count
+    stage: post_solvation
+    check_logic: >
+      if n_water_molecules < 1000:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Only {n_water} water molecules in system after solvation.
+      Minimum required: 1000. Fewer than 1000 water molecules
+      is insufficient for proper bulk water behavior and hydration
+      shell formation. Increase box size or solute-to-edge distance
+      and re-run solvation.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx editconf with larger -d value (try -d {suggested_d:.1f})
+      then re-run gmx solvate.
+
+  BS006:
+    name: Recommended water molecule count
+    stage: post_solvation
+    check_logic: >
+      if 1000 <= n_water_molecules < 5000:
+        return WARNING
+    severity: WARNING
+    applicable_system_types: all
+    message: >
+      Only {n_water} water molecules in system. Recommended
+      minimum: 5000. Systems with fewer than 5000 water molecules
+      may show finite-size effects in thermodynamic properties.
+      Consider increasing box size for more reliable bulk water
+      behavior.
+    auto_correctable: false
+    correction_suggestion: >
+      Consider re-running gmx editconf with -d {suggested_d:.1f}
+      to increase water molecule count above 5000.
+
+  BS007:
+    name: Water to protein residue ratio
+    stage: post_solvation
+    check_logic: >
+      ratio = n_water_molecules / n_protein_residues
+      if ratio < 5.0:
+        return WARNING
+    severity: WARNING
+    applicable_system_types:
+      - protein_in_water
+      - protein_ligand
+      - membrane_protein
+    message: >
+      Water-to-residue ratio {ratio:.1f} is below recommended
+      minimum of 5.0 (system has {n_water} waters for
+      {n_residues} residues). System may be under-solvated.
+      Consider increasing box size to improve solvation quality.
+    auto_correctable: false
+    correction_suggestion: >
+      Increase box size to achieve at least {min_waters_needed}
+      water molecules (5 per residue minimum).
+
+  BS008:
+    name: Water structure file matches water model
+    stage: post_solvation
+    check_logic: >
+      expected_file = water_structure_file_mapping[water_model]
+      used_file = cs_flag_value from solvate command
+      if used_file != expected_file:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    water_structure_file_mapping:
+      TIP3P: spc216.gro
+      TIP3P-CHARMM: spc216.gro
+      SPC: spc216.gro
+      SPCE: spc216.gro
+      TIP4P: tip4p.gro
+      TIP4P-EW: tip4p.gro
+      TIP4P-2005: tip4p.gro
+      TIP4P-D: tip4p.gro
+      TIP5P: tip5p.gro
+    message: >
+      Water structure file '{used_file}' does not match water
+      model '{water_model}'. Expected: '{expected_file}'.
+      Using the wrong structure file produces an incorrectly
+      equilibrated starting configuration that may require
+      significantly longer equilibration or cause subtle artifacts.
+    auto_correctable: true
+    correction_suggestion: >
+      Re-run gmx solvate with -cs {expected_file} flag.
+
+  BS009:
+    name: Topology water count matches structure file
+    stage: post_solvation
+    check_logic: >
+      topology_water_count = count from [ molecules ] section
+      gro_water_count = count water residues in .gro file
+      if topology_water_count != gro_water_count:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Topology water count ({top_count}) does not match structure
+      file water count ({gro_count}). The topology was not correctly
+      updated after solvation or was manually edited incorrectly.
+      Topology and structure file must be consistent before
+      proceeding to ionization.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx solvate with -p {topology_file} flag to ensure
+      topology is automatically updated. Do not manually edit
+      water counts in the topology.
+
+  BS010:
+    name: Box water fill fraction reasonable
+    stage: post_solvation
+    check_logic: >
+      volume_per_water_nm3 = 0.030
+      water_volume = n_water * volume_per_water_nm3
+      fill_fraction = water_volume / box_volume
+      if fill_fraction < 0.55 or fill_fraction > 0.80:
+        return WARNING
+    severity: WARNING
+    applicable_system_types: all
+    expected_range:
+      minimum: 0.55
+      maximum: 0.80
+    message: >
+      Box water fill fraction {fraction:.2f} is outside expected
+      range [0.55, 0.80]. This may indicate solvation problems
+      such as insufficient water molecules, incorrect box size,
+      or an unusually large or dense solute. Inspect the solvated
+      structure visually to verify correct solvation.
+    auto_correctable: false
+    correction_suggestion: >
+      Inspect the solvated structure with a molecular visualization
+      tool (e.g., VMD, PyMOL) to verify water distribution.
+      If fill fraction is too low, increase box size.
+      If fill fraction is too high, the solute may be unusually
+      large or dense — verify the starting structure.
+
+
+post_ionization_checks:
+  description: >
+    Checks performed after ionization (gmx genion). Validate
+    charge neutrality, ion placement, and topology consistency.
+
+  BS011:
+    name: System charge neutrality
+    stage: post_ionization
+    check_logic: >
+      total_charge = sum of all atomic charges in system
+      if abs(total_charge) >= 0.01:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      System has non-zero total charge: {charge:+.2f} e.
+      The system must be charge-neutral before MD simulation.
+      Non-neutral systems with PBC produce unphysical results
+      and artifacts in PME electrostatic calculations.
+      Add {abs_charge} {ion_type} counterion(s) to neutralize.
+    auto_correctable: true
+    correction_suggestion: >
+      Re-run gmx genion with -neutral flag to automatically
+      add the required counterions for charge neutralization.
+
+  BS012:
+    name: Ion names match force field convention
+    stage: post_ionization
+    check_logic: >
+      expected_names = ion_naming_conventions[force_field_family]
+      for each ion in topology:
+        if ion.residue_name not in expected_names.values():
+          return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Ion residue name '{ion_name}' is not recognized for force
+      field family '{ff_family}'. Expected '{expected_name}' for
+      {ion_type}. Wrong ion names cause fatal topology errors
+      during grompp preprocessing. Re-run gmx genion with the
+      correct -pname and -nname flags for your force field.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx genion with:
+        -pname {correct_pname} (positive ion name for {ff_family})
+        -nname {correct_nname} (negative ion name for {ff_family})
+      AMBER: -pname NA -nname CL
+      CHARMM: -pname SOD -nname CLA
+      GROMOS: -pname NA+ -nname CL-
+
+  BS013:
+    name: Water count updated after ion addition
+    stage: post_ionization
+    check_logic: >
+      expected_water = n_water_before_genion - n_ions_added
+      actual_water = topology_water_count
+      if actual_water != expected_water:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Water count not correctly updated after ion addition.
+      Expected {expected} water molecules (original {original}
+      minus {n_ions} ions added), found {actual} in topology.
+      Topology and structure file are inconsistent and grompp
+      will fail with an atom count mismatch error.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx genion with -p {topology_file} flag to ensure
+      topology is automatically updated. Do not manually edit
+      water or ion counts in the topology.
+
+  BS014:
+    name: Minimum ion distance from protein
+    stage: post_ionization
+    check_logic: >
+      for each ion in system:
+        min_dist = minimum distance from ion to any protein atom
+        if min_dist < 0.6:
+          return WARNING
+    severity: WARNING
+    applicable_system_types:
+      - protein_in_water
+      - protein_ligand
+      - membrane_protein
+    message: >
+      Ion {ion_id} ({ion_type}) is only {distance:.3f} nm from
+      protein atom {protein_atom} (residue {residue_name}
+      {residue_id}). Minimum recommended distance: 0.6 nm.
+      This may indicate a misidentified structural ion that
+      should be parameterized separately, or a genion placement
+      artifact. Inspect the structure visually.
+    auto_correctable: false
+    correction_suggestion: >
+      If this is a structural ion (e.g., Zn2+ in active site):
+        Add it manually to the topology with correct parameters
+        before running genion.
+      If this is a bulk ion placed too close by genion:
+        Re-run genion — random placement may give different result.
+
+  BS015:
+    name: Salt concentration within physiological range
+    stage: post_ionization
+    check_logic: >
+      calculated_conc_mM = (n_ion_pairs / N_Avogadro
+                            / box_volume_L) * 1000
+      if calculated_conc_mM < 50 or calculated_conc_mM > 500:
+        return WARNING
+    severity: WARNING
+    applicable_system_types: all
+    message: >
+      Calculated salt concentration {conc:.0f} mM is outside
+      typical physiological range [50, 500] mM. Verify this
+      matches the experimental conditions being simulated.
+      Standard physiological NaCl concentration is 150 mM.
+    auto_correctable: false
+    correction_suggestion: >
+      If 150 mM NaCl is desired, re-run gmx genion with
+      -conc 0.15 -neutral flags.
+
+  BS016:
+    name: Structural ions present if metal binding site detected
+    stage: post_ionization
+    check_logic: >
+      metal_binding_residues = [CYS, HIS, ASP, GLU, MET]
+      if protein_has_metal_binding_motif(metal_binding_residues):
+        if no_structural_ions_in_topology:
+          return WARNING
+    severity: WARNING
+    applicable_system_types:
+      - protein_in_water
+      - protein_ligand
+    message: >
+      Potential metal binding site detected in protein structure
+      (residues: {binding_site_residues}). No structural ions
+      found in topology. If this protein requires metal ions for
+      structural integrity or catalytic function, they must be
+      added and parameterized before bulk ion addition with genion.
+      Proceeding without structural ions may lead to incorrect
+      protein geometry and dynamics.
+    auto_correctable: false
+    correction_suggestion: >
+      1. Identify required structural ions from PDB HETATM records
+         or literature.
+      2. Add structural ions to topology with appropriate parameters
+         (Li-Merz 12-6-4 recommended for Zn2+, Mg2+, Ca2+).
+      3. Re-run gmx genion for bulk ion addition.
+
+  BS017:
+    name: No ions inside membrane hydrophobic core
+    stage: post_ionization
+    check_logic: >
+      if system_type == membrane:
+        membrane_core_z_range = identify_hydrophobic_core(lipids)
+        for each ion in system:
+          if ion.z_position within membrane_core_z_range:
+            return ERROR
+    severity: ERROR
+    applicable_system_types:
+      - membrane_protein
+    message: >
+      Ion {ion_id} ({ion_type}) found within membrane hydrophobic
+      core at z-position {z_pos:.2f} nm (membrane core range:
+      {core_min:.2f} to {core_max:.2f} nm). Ions must not be
+      placed within the hydrophobic membrane interior.
+      Re-run genion with appropriate distance constraints.
+    auto_correctable: false
+    correction_suggestion: >
+      Re-run gmx genion. If the problem persists, use an index
+      file to restrict ion placement to the water phase only.
+
+
+cross_checks:
+  description: >
+    Checks that span multiple stages and verify overall consistency
+    of the prepared system before energy minimization.
+
+  BS018:
+    name: Total atom count consistency
+    stage: cross_check
+    check_logic: >
+      sites_per_water = {TIP3P: 3, SPCE: 3, SPC: 3,
+                         TIP4P: 4, TIP4P-EW: 4, TIP4P-2005: 4,
+                         TIP5P: 5}
+      calculated_total = (protein_atoms
+                         + n_water * sites_per_water[water_model]
+                         + n_Na + n_Cl + n_other_ions
+                         + ligand_atoms
+                         + structural_ion_atoms)
+      gro_total = atom count in .gro file
+      if gro_total != calculated_total:
+        return ERROR
+    severity: ERROR
+    applicable_system_types: all
+    message: >
+      Total atom count mismatch. Structure file (.gro) contains
+      {gro_count} atoms but calculated total is {calc_count}.
+      Breakdown: protein={protein_atoms}, water={water_atoms}
+      ({n_water} molecules x {sites} sites), ions={ion_atoms},
+      ligand={ligand_atoms}.
+      Topology and structure file are inconsistent and grompp
+      will fail. Identify which preparation step introduced
+      the discrepancy.
+    auto_correctable: false
+    correction_suggestion: >
+      Trace back through preparation steps to identify where
+      the atom count diverged. Common causes:
+      1. Topology not updated after solvation (re-run with -p flag)
+      2. Topology not updated after ionization (re-run with -p flag)
+      3. Manual topology edits introduced errors
+      4. Wrong water model sites_per_water used in calculation
+
+  BS019:
+    name: Topology molecule order correct
+    stage: cross_check
+    check_logic: >
+      expected_order = [protein, ligand_if_present,
+                        structural_ions_if_present,
+                        bulk_ions, water]
+      actual_order = parse_molecules_section(topology)
+      if actual_order != expected_order:
+        return WARNING
+    severity: WARNING
+    applicable_system_types: all
+    message: >
+      Molecule order in topology [ molecules ] section may be
+      incorrect. Found order: {actual_order}. GROMACS convention:
+      protein → ligand → structural ions → bulk ions → water.
+      Wrong order can cause grompp errors with atom count
+      mismatch between topology and structure file.
+    auto_correctable: false
+    correction_suggestion: >
+      Manually reorder the [ molecules ] section of the topology
+      to match GROMACS convention:
+      {protein_name}  1
+      {ligand_name}   1  (if present)
+      {pos_ion_name}  {n_pos_ions}
+      {neg_ion_name}  {n_neg_ions}
+      {water_name}    {n_water}
+
+  BS020:
+    name: Box dimensions consistent with system preparation
+    stage: cross_check
+    check_logic: >
+      box_vectors_in_gro = parse_box_line(gro_file)
+      expected_box = box_from_editconf_command
+      if not approximately_equal(box_vectors_in_gro,
+                                 expected_box, tolerance=0.01):
+        return WARNING
+    severity: WARNING
+    applicable_system_types: all
+    message: >
+      Box dimensions in .gro file ({gro_box}) appear inconsistent
+      with expected dimensions from system preparation ({expected_box}).
+      This may indicate the wrong .gro file is being used or the
+      box was modified after editconf. Verify the correct solvated
+      and ionized structure file is being used for grompp.
+    auto_correctable: false
+    correction_suggestion: >
+      Verify the input file for grompp is the final ionized
+      structure file, not an intermediate file from an earlier
+      preparation step.
+
+
+validation_summary_rules:
+  description: >
+    Rules for determining the overall validation status from
+    individual check results. Used by the Report Builder tool.
+
+  overall_status_determination:
+    PASS:
+      condition: >
+        No ERROR checks failed AND no WARNING checks failed
+      description: System preparation is valid and complete.
+
+    PASS_WITH_WARNINGS:
+      condition: >
+        No ERROR checks failed AND one or more WARNING checks failed
+      description: >
+        System preparation is valid but has non-critical issues
+        that should be reviewed before proceeding.
+
+    FAIL:
+      condition: >
+        One or more ERROR checks failed
+      description: >
+        System preparation has critical issues that must be
+        resolved before simulation can proceed.
+
+  blocking_checks:
+    description: >
+      Checks that immediately block simulation from proceeding
+      regardless of other results.
+    check_ids:
+      - BS002
+      - BS004
+      - BS005
+      - BS008
+      - BS009
+      - BS011
+      - BS012
+      - BS013
+      - BS017
+      - BS018
+
+  non_blocking_checks:
+    description: >
+      Checks that generate warnings but do not block simulation.
+    check_ids:
+      - BS001
+      - BS003
+      - BS006
+      - BS007
+      - BS010
+      - BS014
+      - BS015
+      - BS016
+      - BS019
+      - BS020
+
+  check_execution_order:
+    description: >
+      Recommended order for executing checks to fail fast
+      on the most critical issues first.
+    order:
+      1: BS004
+      2: BS002
+      3: BS003
+      4: BS001
+      5: BS005
+      6: BS008
+      7: BS009
+      8: BS006
+      9: BS007
+      10: BS010
+      11: BS011
+      12: BS012
+      13: BS013
+      14: BS018
+      15: BS014
+      16: BS015
+      17: BS016
+      18: BS017
+      19: BS019
+      20: BS020

@@ -1,0 +1,451 @@
+description: >
+  Ion force field parameters and their compatibility with water models
+  and protein force fields. Ion parameters are critically dependent on
+  the water model — mixing incompatible ion parameters and water models
+  is a common and serious error that leads to incorrect ion hydration
+  free energies and wrong ion-protein interactions.
+
+parameter_sets:
+
+  Aqvist:
+    reference: "Aqvist, J Phys Chem 1990"
+    ions_covered:
+      - Na+
+      - K+
+      - Mg2+
+      - Ca2+
+    parameterized_with: SPC
+    compatible_water_models:
+      - SPC
+      - SPCE
+    compatible_force_fields:
+      - gromos53a6
+      - gromos54a7
+      - gromos54a8
+    not_recommended_with:
+      - TIP3P
+      - TIP4P
+      - TIP4P-EW
+      - TIP4P-2005
+    notes: >
+      Classic ion parameters. Standard choice for GROMOS force fields.
+      Do NOT use with TIP3P or TIP4P water — will give wrong hydration
+      free energies and ion-protein interactions. Parameterized
+      specifically for SPC water geometry and charge distribution.
+
+  Joung-Cheatham:
+    reference: "Joung & Cheatham, JPCA 2008"
+    ions_covered:
+      - Li+
+      - Na+
+      - K+
+      - Rb+
+      - Cs+
+      - F-
+      - Cl-
+      - Br-
+      - I-
+    parameterized_with:
+      - TIP3P
+      - TIP4P-EW
+      - SPCE
+    variants:
+      TIP3P_version:
+        compatible_water_models:
+          - TIP3P
+        compatible_force_fields:
+          - amber99sb
+          - amber99sb-ildn
+          - amber14sb
+        notes: >
+          Use this variant when simulating with TIP3P water.
+          Most commonly used variant for AMBER force field simulations.
+      TIP4P-EW_version:
+        compatible_water_models:
+          - TIP4P-EW
+        compatible_force_fields:
+          - amber99sb-ildn
+          - amber14sb
+        notes: >
+          Use this variant when simulating with TIP4P-EW water.
+          Better ion properties than TIP3P variant due to improved
+          water model.
+      SPCE_version:
+        compatible_water_models:
+          - SPCE
+        compatible_force_fields:
+          - gromos54a7
+          - oplsaa
+          - oplsaal
+        notes: >
+          Use this variant when simulating with SPC/E water.
+          Appropriate for GROMOS or OPLS simulations using SPC/E.
+    critical_note: >
+      MUST select the correct variant matching the water model.
+      Mixing TIP3P-parameterized ions with TIP4P-EW water (or vice
+      versa) leads to incorrect ion hydration and potentially wrong
+      ion-protein interactions. This is a common and non-obvious error.
+    notes: >
+      Currently the recommended ion parameters for AMBER force fields.
+      Covers all common monovalent ions. Well-validated against
+      experimental hydration free energies and activity coefficients.
+
+  CHARMM36_ions:
+    reference: "CHARMM36 force field papers"
+    ions_covered:
+      - Na+
+      - K+
+      - Cl-
+      - Ca2+
+      - Mg2+
+      - Zn2+
+    parameterized_with: TIP3P-CHARMM
+    compatible_water_models:
+      - TIP3P-CHARMM
+    compatible_force_fields:
+      - charmm36
+      - charmm36m
+    not_recommended_with:
+      - TIP3P
+      - SPC
+      - SPCE
+      - TIP4P
+      - TIP4P-EW
+      - TIP4P-2005
+    notes: >
+      CHARMM-specific ion parameters. Must be used with CHARMM-TIP3P.
+      Do not substitute with Joung-Cheatham or Aqvist parameters
+      when using CHARMM36/36m. CHARMM ion parameters include
+      specific LJ cross-terms optimized for CHARMM-TIP3P water.
+    gromacs_residue_names:
+      sodium: SOD
+      potassium: POT
+      chloride: CLA
+      calcium: CAL
+      magnesium: MG
+      zinc: ZN2
+
+  Li-Merz_12-6:
+    reference: "Li et al., JCTC 2013"
+    model_type: 12-6 Lennard-Jones
+    ions_covered:
+      - Mg2+
+      - Ca2+
+      - Zn2+
+      - Fe2+
+      - Fe3+
+      - Al3+
+      - Ba2+
+      - Sr2+
+      - Ra2+
+      - Cd2+
+      - Cu2+
+      - Ni2+
+      - Co2+
+      - Mn2+
+    parameterized_with:
+      - TIP3P
+      - TIP4P-EW
+      - SPCE
+    compatible_force_fields:
+      - amber99sb-ildn
+      - amber14sb
+    notes: >
+      Recommended for divalent and trivalent ions with AMBER force
+      fields. Better than simple LJ parameters for reproducing
+      coordination geometry and hydration free energies of metal
+      ions. Three variants available matching TIP3P, TIP4P-EW,
+      and SPC/E water models — must match water model used.
+      Use 12-6-4 model if available for highest accuracy.
+
+  Li-Merz_12-6-4:
+    reference: "Li et al., JCTC 2013"
+    model_type: 12-6-4 (includes charge-induced dipole term)
+    ions_covered:
+      - Mg2+
+      - Ca2+
+      - Zn2+
+      - Fe2+
+      - Fe3+
+      - Al3+
+      - Ba2+
+      - Sr2+
+      - Cd2+
+      - Cu2+
+      - Ni2+
+      - Co2+
+      - Mn2+
+    compatible_force_fields:
+      - amber14sb
+    notes: >
+      Most accurate model for divalent and trivalent ions. Includes
+      charge-induced dipole term (C4 term) that better reproduces
+      ion coordination geometry, hydration free energies, and
+      ion-protein interactions. Requires modified non-bonded
+      interactions — not supported by all GROMACS versions.
+      Use 12-6 model if 12-6-4 is not available in your GROMACS
+      version. Strongly recommended for simulations where metal
+      ion coordination is scientifically important (e.g., metalloenzymes,
+      zinc finger proteins, calcium-binding proteins).
+
+  Amber_monovalent_default:
+    reference: "AMBER force field default parameters"
+    ions_covered:
+      - Na+
+      - Cl-
+    parameterized_with: TIP3P
+    compatible_force_fields:
+      - amber99sb
+      - amber99sb-ildn
+    notes: >
+      Simple default ion parameters included in AMBER force field
+      distributions. Acceptable for basic charge neutralization
+      but Joung-Cheatham parameters are preferred for any simulation
+      where ion behavior is scientifically relevant.
+    recommendation: >
+      Use Joung-Cheatham parameters instead for all new simulations.
+
+
+ion_naming_conventions:
+  description: >
+    Ion residue names in GROMACS topology vary by force field family.
+    Using wrong ion names causes topology errors during grompp.
+    Always verify ion names match the force field being used.
+
+  amber_force_fields:
+    sodium: NA
+    potassium: K
+    chloride: CL
+    calcium: CA
+    magnesium: MG
+    zinc: ZN
+    notes: >
+      AMBER uses simple element symbols for ion names.
+      Case sensitive — must match exactly.
+
+  charmm_force_fields:
+    sodium: SOD
+    potassium: POT
+    chloride: CLA
+    calcium: CAL
+    magnesium: MG
+    zinc: ZN2
+    notes: >
+      CHARMM uses three-letter codes for ion names.
+      Different from AMBER naming — mixing causes topology errors.
+
+  gromos_force_fields:
+    sodium: "NA+"
+    potassium: "K+"
+    chloride: "CL-"
+    calcium: "CA2+"
+    magnesium: "MG2+"
+    notes: >
+      GROMOS uses element symbols with charge notation.
+      Check specific GROMOS topology files for exact naming.
+
+  opls_force_fields:
+    sodium: NA
+    potassium: K
+    chloride: CL
+    notes: >
+      OPLS uses similar naming to AMBER for common ions.
+      Verify against OPLS topology files for less common ions.
+
+
+ion_concentration_rules:
+  description: >
+    Rules for determining the correct number and type of ions
+    to add to a simulation system.
+
+  physiological_NaCl:
+    concentration_mM: 150
+    concentration_M: 0.15
+    ion_type: NaCl
+    notes: >
+      Standard physiological salt concentration. Add Na+ and Cl-
+      to reach 0.15 M after neutralizing system charge.
+
+  neutralization_requirement:
+    description: >
+      System must be charge-neutral before MD simulation.
+      Add counterions to neutralize net charge of protein + ligand.
+    formula: >
+      total_charge = protein_charge + ligand_charge
+                   + cofactor_charge + ion_charge
+      assert abs(total_charge) < 0.01
+    severity: ERROR
+    notes: >
+      Non-zero total charge with PBC creates an infinite charged
+      system, which is physically meaningless and leads to artifacts
+      in electrostatic calculations with PME.
+
+  ion_count_calculation:
+    formula: >
+      n_ion_pairs = round(concentration_M * N_Avogadro
+                          * box_volume_L)
+    example:
+      box_volume_nm3: 343.0
+      box_volume_L: 3.43e-22
+      concentration_M: 0.15
+      n_ion_pairs: 31
+      notes: >
+        For a 7x7x7 nm cubic box with 0.15 M NaCl:
+        approximately 31 Na+ and 31 Cl- ion pairs before
+        neutralization adjustment.
+    gromacs_flag: "-conc 0.15"
+    notes: >
+      gmx genion -conc flag automatically calculates the correct
+      number of ions for the target concentration. Preferred over
+      manual calculation to avoid rounding errors.
+
+  alternative_concentrations:
+    low_salt:
+      concentration_mM: 50
+      use_case: >
+        Some in vitro experiments use low salt. Use when
+        matching specific experimental conditions.
+    high_salt:
+      concentration_mM: 300
+      use_case: >
+        Stability studies, halophilic proteins, or matching
+        specific experimental conditions.
+    no_salt:
+      concentration_mM: 0
+      use_case: >
+        Neutralization only. Acceptable for some studies but
+        not physiologically realistic.
+      severity: WARNING
+      message: >
+        System has no added salt beyond neutralization.
+        This is not physiologically realistic. Consider adding
+        0.15 M NaCl unless matching specific experimental conditions.
+
+  nucleic_acid_requirements:
+    minimum_monovalent_mM: 150
+    recommended_monovalent_mM: 150
+    magnesium_for_RNA:
+      recommended_mM: 2.0
+      notes: >
+        Mg2+ is important for RNA folding and stability.
+        Add 2-5 mM MgCl2 for RNA simulations unless studying
+        Mg2+-free conditions explicitly.
+    notes: >
+      Nucleic acids are highly negatively charged. Higher ion
+      concentration is critical for charge screening and structural
+      stability. Never simulate nucleic acids with neutralization
+      only — always add physiological salt.
+
+
+ion_placement_rules:
+  description: >
+    Rules governing where ions are placed in the simulation box.
+
+  minimum_distance_from_solute:
+    from_protein_nm: 0.6
+    from_membrane_nm: 0.5
+    notes: >
+      Ions must not be placed too close to the protein surface.
+      gmx genion handles this automatically with default settings.
+      Verify that no ion is within 0.6 nm of any protein atom
+      in the initial structure.
+
+  ion_replacement_of_water:
+    description: >
+      gmx genion replaces water molecules with ions. The number
+      of water molecules in the topology must be updated accordingly.
+    validation_check: >
+      n_water_after_genion = n_water_before_genion
+                           - n_Na_added - n_Cl_added
+      assert topology_water_count == n_water_after_genion
+
+  structural_ions:
+    description: >
+      Some proteins have structurally important ions (e.g., Zn2+
+      in zinc fingers, Ca2+ in calmodulin, Mg2+ in kinases).
+      These must be added BEFORE bulk ion addition and must NOT
+      be replaced by genion.
+    validation_check: >
+      Verify structural ions from PDB HETATM records are
+      present in topology with correct parameters.
+      Verify genion was run AFTER structural ions were added.
+    parameterization_note: >
+      Structural ions require special parameterization.
+      Use Li-Merz 12-6-4 for Zn2+, Mg2+, Ca2+ where coordination
+      geometry is scientifically important. Flag any divalent ion
+      in the active site for manual parameter review.
+    severity: WARNING
+    message: >
+      Metal binding site detected in protein structure but no
+      structural ions found in topology. Verify whether metal
+      ions should be included and parameterized before proceeding.
+
+  membrane_ion_placement:
+    description: >
+      For membrane systems, ions should be placed only in the
+      water phase, not within the membrane hydrophobic core.
+    validation_check: >
+      Verify no ion is within the hydrophobic core of the
+      membrane (typically defined by lipid tail region).
+    severity: ERROR
+    message: >
+      Ion found within membrane hydrophobic core.
+      Re-run genion with appropriate distance constraints.
+
+
+genion_protocol:
+  description: >
+    Standard protocol for adding ions using gmx genion.
+    The agent must follow this sequence exactly.
+
+  step_1_create_ions_tpr:
+    tool: gmx grompp
+    purpose: >
+      Create a minimal .tpr file required by genion.
+      This is NOT a simulation — just preprocessing.
+    required_mdp_parameters:
+      integrator: steep
+      nsteps: 0
+      cutoff-scheme: Verlet
+      rcoulomb: 1.0
+      rvdw: 1.0
+      coulombtype: PME
+    notes: >
+      Using nsteps=0 with steep integrator creates a valid .tpr
+      without running any simulation. This is the standard approach
+      for the genion preprocessing step.
+
+  step_2_run_genion:
+    tool: gmx genion
+    required_flags:
+      - flag: "-s"
+        description: Input .tpr file from step 1
+      - flag: "-o"
+        description: Output structure with ions
+      - flag: "-p"
+        description: Topology file (updated with ion counts)
+      - flag: "-pname"
+        description: >
+          Positive ion residue name matching force field convention
+          (e.g., NA for AMBER, SOD for CHARMM)
+      - flag: "-nname"
+        description: >
+          Negative ion residue name matching force field convention
+          (e.g., CL for AMBER, CLA for CHARMM)
+      - flag: "-neutral"
+        description: Add ions to neutralize system charge
+      - flag: "-conc"
+        description: Target salt concentration in mol/L
+        recommended_value: 0.15
+    notes: >
+      Always use both -neutral and -conc flags together.
+      -neutral ensures charge neutrality; -conc adds additional
+      ions to reach physiological concentration.
+
+  validation_after_genion:
+    checks:
+      - system_charge_is_zero
+      - water_count_updated_in_topology
+      - ion_names_match_force_field
+      - no_ion_within_0.6nm_of_protein
+      - ion_count_matches_target_concentration

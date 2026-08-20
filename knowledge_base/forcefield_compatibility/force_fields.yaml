@@ -1,0 +1,705 @@
+amber_family:
+  description: >
+    AMBER (Assisted Model Building with Energy Refinement) force fields.
+    All-atom force fields using fixed partial charges. Widely used for
+    proteins and nucleic acids. Parameterized primarily with TIP3P water.
+
+  ff99SB:
+    full_name: AMBER ff99SB
+    version_introduced: 2006
+    reference: "Hornak et al., Proteins 2006"
+    type: all-atom
+    functional_form: harmonic bonds/angles, periodic dihedrals, LJ + Coulomb
+    gromacs_directory: amber99sb.ff
+
+    suitable_for:
+      proteins:
+        rating: good
+        notes: >
+          Improved backbone torsions over ff99. Good for folded proteins.
+          Known issues with helix-coil balance (over-stabilizes helices).
+      nucleic_acids:
+        rating: not_recommended
+        notes: Use AMBER-specific nucleic acid force fields (OL3, BSC1).
+      lipids:
+        rating: not_suitable
+        notes: No lipid parameters available.
+      carbohydrates:
+        rating: not_suitable
+        notes: No carbohydrate parameters available.
+      small_molecules:
+        rating: requires_gaff
+        notes: Use GAFF/GAFF2 for small molecules with AMBER protein FF.
+
+    recommended_water_models:
+      primary: TIP3P
+      acceptable:
+        - TIP4P-EW
+        - TIP3P-FB
+      not_recommended:
+        - SPC
+        - SPCE
+        - TIP4P-2005
+
+    recommended_ions:
+      monovalent: Joung-Cheatham (TIP3P variant)
+      divalent: Li-Merz or Aqvist
+      notes: >
+        Ion parameters are critically dependent on water model.
+        Joung-Cheatham ions are specifically parameterized for
+        TIP3P and TIP4P-EW — do not mix with SPC/E.
+
+    known_limitations:
+      - Over-stabilizes alpha-helices relative to beta-sheets
+      - Helix-coil equilibrium not well reproduced
+      - Backbone phi/psi balance issues for some residues
+      - Not suitable for intrinsically disordered proteins (IDPs)
+
+    mdp_specific_requirements:
+      rcoulomb: 1.0
+      rvdw: 1.0
+      vdw_modifier: Potential-shift
+      DispCorr: EnerPres
+
+  ff99SB-ILDN:
+    full_name: AMBER ff99SB-ILDN
+    version_introduced: 2010
+    reference: "Lindorff-Larsen et al., Proteins 2010"
+    type: all-atom
+    gromacs_directory: amber99sb-ildn.ff
+    parent_ff: ff99SB
+    improvements_over_parent: >
+      Improved side-chain torsion parameters for Ile (I), Leu (L),
+      Asp (D), and Asn (N) residues. Significantly better rotamer
+      distributions for these residues compared to ff99SB.
+
+    suitable_for:
+      proteins:
+        rating: very_good
+        notes: >
+          Currently one of the most widely used and validated protein
+          force fields. Good balance of backbone and side-chain accuracy.
+          Better than ff99SB for most protein simulations.
+          Still has some limitations for IDPs and beta-sheet proteins.
+      nucleic_acids:
+        rating: not_recommended
+        notes: Use AMBER nucleic acid specific parameters.
+      lipids:
+        rating: not_suitable
+        notes: No lipid parameters available.
+      carbohydrates:
+        rating: not_suitable
+        notes: No carbohydrate parameters available.
+      small_molecules:
+        rating: requires_gaff
+        notes: Use GAFF or GAFF2 for small molecules.
+
+    recommended_water_models:
+      primary: TIP3P
+      acceptable:
+        - TIP4P-EW
+        - TIP4P-2005
+        - TIP3P-FB
+      not_recommended:
+        - SPC
+        - SPCE
+
+    recommended_ions:
+      monovalent: Joung-Cheatham (TIP3P variant)
+      divalent: Li-Merz
+      notes: >
+        Same water-model dependency as ff99SB. Always match ion
+        parameter variant to the water model being used.
+
+    known_limitations:
+      - Residual helix over-stabilization inherited from ff99SB
+      - Limited validation for IDPs
+      - Not parameterized for post-translational modifications
+
+    mdp_specific_requirements:
+      rcoulomb: 1.0
+      rvdw: 1.0
+      vdw_modifier: Potential-shift
+      DispCorr: EnerPres
+
+  ff14SB:
+    full_name: AMBER ff14SB
+    version_introduced: 2015
+    reference: "Maier et al., JCTC 2015"
+    type: all-atom
+    gromacs_directory: amber14sb.ff
+    parent_ff: ff99SB-ILDN
+    improvements_over_parent: >
+      Comprehensive reparameterization of backbone and side-chain
+      torsions. Better helix-coil balance. Improved agreement with
+      NMR chemical shifts and J-couplings. Currently the recommended
+      AMBER force field for protein simulations.
+
+    suitable_for:
+      proteins:
+        rating: excellent
+        notes: >
+          Currently the recommended AMBER protein force field.
+          Best helix-coil balance in the AMBER family. Good for
+          both folded proteins and IDPs (with TIP4P-D water).
+      nucleic_acids:
+        rating: acceptable
+        notes: Use with OL3 (RNA) or BSC1 (DNA) nucleic acid parameters.
+      lipids:
+        rating: not_suitable
+        notes: Use AMBER-LIPID17 or Slipids for lipids.
+      carbohydrates:
+        rating: acceptable
+        notes: Use GLYCAM06 for carbohydrates.
+      small_molecules:
+        rating: requires_gaff2
+        notes: GAFF2 preferred over GAFF with ff14SB.
+
+    recommended_water_models:
+      primary: TIP3P
+      acceptable:
+        - TIP4P-EW
+        - TIP4P-2005
+      for_IDPs: TIP4P-D
+      not_recommended:
+        - SPC
+        - SPCE
+
+    recommended_ions:
+      monovalent: Joung-Cheatham (TIP3P variant)
+      divalent: Li-Merz 12-6-4 model
+      notes: >
+        For divalent ions (Mg2+, Ca2+, Zn2+), the 12-6-4 model
+        (Li-Merz) is strongly recommended over simple LJ parameters.
+
+    known_limitations:
+      - Still uses fixed charges (no polarizability)
+      - TIP3P water overestimates diffusion coefficient
+      - Not ideal for IDPs without TIP4P-D water
+
+    mdp_specific_requirements:
+      rcoulomb: 1.0
+      rvdw: 1.0
+      vdw_modifier: Potential-shift
+      DispCorr: EnerPres
+
+  GAFF:
+    full_name: General AMBER Force Field
+    version: 1
+    reference: "Wang et al., J Comput Chem 2004"
+    type: all-atom small molecule
+    purpose: >
+      Parameterization of organic small molecules for use alongside
+      AMBER protein force fields. Covers most drug-like molecules.
+
+    suitable_for:
+      small_molecules:
+        rating: good
+        notes: >
+          Covers most organic functional groups. Parameters derived
+          from AMBER philosophy (RESP charges). Requires RESP charge
+          calculation via antechamber or acpype.
+      proteins:
+        rating: not_suitable
+        notes: Use AMBER protein FF for protein component.
+
+    compatible_protein_force_fields:
+      - ff99SB
+      - ff99SB-ILDN
+    preferred_with: ff99SB-ILDN
+    charge_method_required: RESP
+    tools_for_parameterization:
+      - antechamber
+      - acpype
+
+  GAFF2:
+    full_name: General AMBER Force Field version 2
+    reference: "He et al., JCTC 2020"
+    type: all-atom small molecule
+    improvements_over_gaff: >
+      Better torsion parameters, improved ring geometries,
+      better reproduction of conformational energies.
+      Recommended over GAFF for new projects.
+
+    suitable_for:
+      small_molecules:
+        rating: very_good
+        notes: Preferred over GAFF for all new parameterization work.
+      proteins:
+        rating: not_suitable
+
+    compatible_protein_force_fields:
+      - ff14SB
+      - ff99SB-ILDN
+    preferred_with: ff14SB
+    charge_method_required: RESP
+    tools_for_parameterization:
+      - antechamber
+      - acpype
+
+
+charmm_family:
+  description: >
+    CHARMM (Chemistry at HARvard Macromolecular Mechanics) force fields.
+    All-atom force fields with extensive validation across biomolecular
+    systems. Gold standard for membrane simulations.
+
+  charmm36:
+    full_name: CHARMM36
+    version_introduced: 2010
+    reference: "Best et al., JCTC 2012; Huang & MacKerell, JCTC 2013"
+    type: all-atom
+    gromacs_directory: charmm36.ff
+
+    suitable_for:
+      proteins:
+        rating: very_good
+        notes: >
+          Excellent backbone and side-chain parameters. Good helix-coil
+          balance. Well-validated for folded proteins. Some limitations
+          for IDPs — use CHARMM36m instead.
+      lipids:
+        rating: excellent
+        notes: >
+          Gold standard for lipid simulations. Covers PC, PE, PS, PI,
+          PG, PA, SM, cholesterol, and many other lipid types.
+          Best choice for membrane protein simulations.
+      nucleic_acids:
+        rating: excellent
+        notes: >
+          Comprehensive parameters for DNA and RNA. Well-validated
+          against NMR and crystallographic data.
+      carbohydrates:
+        rating: very_good
+        notes: Uses CHARMM36 carbohydrate parameters (C36-CARB).
+      small_molecules:
+        rating: requires_cgenff
+        notes: Use CGenFF for small molecules with CHARMM36.
+
+    recommended_water_models:
+      primary: TIP3P-CHARMM
+      acceptable:
+        - TIP3P
+      not_recommended:
+        - SPC
+        - SPCE
+        - TIP4P
+        - TIP4P-2005
+      critical_note: >
+        MUST use CHARMM-modified TIP3P (with LJ on H atoms).
+        Standard TIP3P is NOT equivalent and will give wrong results.
+
+    recommended_ions:
+      monovalent: CHARMM36 ion parameters (NaB, ClB)
+      divalent: CHARMM36 divalent parameters
+      notes: >
+        Use CHARMM-specific ion parameters. Do not mix with
+        Joung-Cheatham or Aqvist parameters.
+
+    known_limitations:
+      - Over-stabilizes alpha-helices for some sequences (use CHARMM36m)
+      - CHARMM-TIP3P has poor bulk water properties
+      - Computationally slightly more expensive than AMBER ff99SB-ILDN
+
+    mdp_specific_requirements:
+      rcoulomb: 1.2
+      rvdw: 1.2
+      vdw_modifier: Force-switch
+      rvdw_switch: 1.0
+      DispCorr: "no"
+      critical_note: >
+        CHARMM36 uses a DIFFERENT cutoff scheme than AMBER/GROMOS.
+        rcoulomb = rvdw = 1.2 nm with Force-switch VdW modifier
+        (switch between 1.0 and 1.2 nm). DispCorr must be 'no'
+        because the force-switch already handles long-range VdW.
+        This is one of the most common setup errors when switching
+        between AMBER and CHARMM force fields.
+
+  charmm36m:
+    full_name: CHARMM36m
+    version_introduced: 2017
+    reference: "Huang et al., Nature Methods 2017"
+    type: all-atom
+    gromacs_directory: charmm36m.ff
+    parent_ff: charmm36
+    improvements_over_parent: >
+      Improved backbone CMAP torsion parameters specifically for
+      intrinsically disordered proteins and disordered regions.
+      Better reproduction of NMR chemical shifts for IDPs.
+      Fully backward compatible with CHARMM36 for folded proteins.
+
+    suitable_for:
+      proteins:
+        rating: excellent
+        notes: >
+          Currently the recommended CHARMM force field for proteins.
+          Excellent for both folded proteins AND IDPs. Best choice
+          when the system contains disordered regions.
+      lipids:
+        rating: excellent
+        notes: Inherits all CHARMM36 lipid parameters unchanged.
+      nucleic_acids:
+        rating: excellent
+        notes: Inherits all CHARMM36 nucleic acid parameters.
+      carbohydrates:
+        rating: very_good
+        notes: Inherits CHARMM36 carbohydrate parameters.
+      small_molecules:
+        rating: requires_cgenff
+        notes: Use CGenFF for small molecules.
+
+    recommended_water_models:
+      primary: TIP3P-CHARMM
+      for_IDPs:
+        - TIP4P-2005
+        - CHARMM-modified-TIP4P-2005
+      not_recommended:
+        - SPC
+        - SPCE
+      notes: >
+        For IDP simulations, TIP4P-2005 with CHARMM36m has been
+        shown to give better agreement with experimental data than
+        CHARMM-TIP3P.
+
+    recommended_ions:
+      monovalent: CHARMM36 ion parameters
+      divalent: CHARMM36 divalent parameters
+      notes: Same ion parameters as CHARMM36.
+
+    known_limitations:
+      - CHARMM-TIP3P has poor bulk water properties
+      - Must use CHARMM-specific TIP3P
+
+    mdp_specific_requirements:
+      rcoulomb: 1.2
+      rvdw: 1.2
+      vdw_modifier: Force-switch
+      rvdw_switch: 1.0
+      DispCorr: "no"
+      notes: Identical cutoff scheme to CHARMM36 — required.
+
+  CGenFF:
+    full_name: CHARMM General Force Field
+    version_introduced: 2010
+    reference: "Vanommeslaeghe et al., J Comput Chem 2010"
+    type: all-atom small molecule
+    purpose: >
+      Parameterization of drug-like small molecules for use with
+      CHARMM protein force fields. Analogous to GAFF for AMBER.
+
+    suitable_for:
+      small_molecules:
+        rating: very_good
+        notes: >
+          Covers most organic functional groups. Parameters derived
+          from CHARMM philosophy. Requires ParamChem server or
+          CGenFF program for automated parameterization.
+      proteins:
+        rating: not_suitable
+        notes: Use CHARMM36/36m for protein component.
+
+    compatible_protein_force_fields:
+      - charmm36
+      - charmm36m
+    charge_method_required: CM5 or CHARMM-style
+    tools_for_parameterization:
+      - ParamChem
+      - CGenFF_program
+      - fftk
+    penalty_score_guidance:
+      low: "Score <= 10: parameters are reliable"
+      medium: "Score 10-50: manual review recommended"
+      high: "Score > 50: QM-based reparameterization required"
+
+
+gromos_family:
+  description: >
+    GROMOS (GROningen MOlecular Simulation) force fields.
+    United-atom force fields — aliphatic hydrogens are not explicit,
+    merged into carbon pseudo-atoms. Faster than all-atom but less
+    detailed. Historically important, less commonly used in new projects.
+
+  gromos53a6:
+    full_name: GROMOS 53A6
+    version_introduced: 2004
+    reference: "Oostenbrink et al., J Comput Chem 2004"
+    type: united-atom
+    gromacs_directory: gromos53a6.ff
+
+    suitable_for:
+      proteins:
+        rating: acceptable
+        notes: >
+          Reasonable protein parameters but superseded by 54A7/54A8.
+          United-atom representation is faster but less accurate for
+          side-chain dynamics. Not recommended for new projects.
+      lipids:
+        rating: acceptable
+        notes: Use Berger lipids or GROMOS-compatible lipid parameters.
+      small_molecules:
+        rating: acceptable
+        notes: ATB (Automated Topology Builder) for small molecules.
+      nucleic_acids:
+        rating: not_recommended
+        notes: Limited nucleic acid parameter validation.
+
+    recommended_water_models:
+      primary: SPC
+      acceptable:
+        - SPCE
+      not_recommended:
+        - TIP3P
+        - TIP4P
+        - TIP4P-2005
+
+    recommended_ions:
+      monovalent: Aqvist parameters
+      notes: >
+        Aqvist ion parameters were developed with SPC water and
+        are the standard choice for GROMOS force fields.
+
+    known_limitations:
+      - United-atom representation less accurate for side chains
+      - Superseded by 54A7 and 54A8 for most applications
+      - Limited validation for membrane systems
+
+    mdp_specific_requirements:
+      rcoulomb: 1.4
+      rvdw: 1.4
+      coulombtype: PME
+      vdwtype: Cut-off
+      DispCorr: EnerPres
+      notes: >
+        GROMOS traditionally used 1.4 nm cutoffs. Some protocols
+        use 1.0 nm with PME — check original parameterization paper
+        for the system being studied.
+
+  gromos54a7:
+    full_name: GROMOS 54A7
+    version_introduced: 2011
+    reference: "Schmid et al., Eur Biophys J 2011"
+    type: united-atom
+    gromacs_directory: gromos54a7.ff
+    parent_ff: gromos53a6
+    improvements_over_parent: >
+      Improved backbone torsion parameters. Better helix-coil balance.
+      Improved parameters for charged amino acid side chains.
+      Currently the recommended GROMOS force field for proteins.
+
+    suitable_for:
+      proteins:
+        rating: good
+        notes: >
+          Best GROMOS option for proteins. Improved over 53A6.
+          Still united-atom — faster but less detailed than
+          AMBER or CHARMM all-atom force fields.
+      lipids:
+        rating: acceptable
+        notes: Limited lipid parameter set.
+      small_molecules:
+        rating: acceptable
+        notes: Use ATB server for automated GROMOS-compatible parameterization.
+      nucleic_acids:
+        rating: not_recommended
+        notes: Limited nucleic acid parameter validation.
+
+    recommended_water_models:
+      primary: SPCE
+      acceptable:
+        - SPC
+      not_recommended:
+        - TIP3P
+        - TIP4P
+
+    recommended_ions:
+      monovalent: Aqvist parameters
+      divalent: Aqvist or GROMOS-specific
+      notes: Aqvist parameters standard for GROMOS family.
+
+    known_limitations:
+      - United-atom representation
+      - Less extensively validated than AMBER/CHARMM
+      - Not recommended for new projects requiring high accuracy
+
+    mdp_specific_requirements:
+      rcoulomb: 1.4
+      rvdw: 1.4
+      coulombtype: PME
+      vdwtype: Cut-off
+      DispCorr: EnerPres
+
+  gromos54a8:
+    full_name: GROMOS 54A8
+    version_introduced: 2012
+    reference: "Reif et al., JCTC 2012"
+    type: united-atom
+    gromacs_directory: gromos54a8.ff
+    parent_ff: gromos54a7
+    improvements_over_parent: >
+      Improved parameters for charged amino acid residues (Arg, Lys,
+      Asp, Glu). Better reproduction of NMR coupling constants for
+      charged residues. Recommended when charged residues are critical.
+
+    suitable_for:
+      proteins:
+        rating: good
+        notes: >
+          Preferred over 54A7 when the system has many charged residues
+          or when accurate pKa-dependent behavior is important.
+      lipids:
+        rating: acceptable
+        notes: Limited lipid parameter set.
+      small_molecules:
+        rating: acceptable
+        notes: Use ATB server for parameterization.
+      nucleic_acids:
+        rating: not_recommended
+
+    recommended_water_models:
+      primary: SPCE
+      acceptable:
+        - SPC
+      not_recommended:
+        - TIP3P
+        - TIP4P
+
+    recommended_ions:
+      monovalent: Aqvist parameters
+      notes: Same as gromos54a7.
+
+    known_limitations:
+      - United-atom representation
+      - Narrower validation scope than AMBER/CHARMM
+
+    mdp_specific_requirements:
+      rcoulomb: 1.4
+      rvdw: 1.4
+      coulombtype: PME
+      vdwtype: Cut-off
+      DispCorr: EnerPres
+
+
+opls_family:
+  description: >
+    OPLS (Optimized Potentials for Liquid Simulations) force fields.
+    All-atom force fields developed by the Jorgensen group. Parameterized
+    against liquid-state properties. Good for organic molecules and
+    proteins. Less commonly used than AMBER/CHARMM for biomolecular
+    simulations but strong for small organic molecules.
+
+  oplsaa:
+    full_name: OPLS-AA (All Atom)
+    version_introduced: 1996
+    reference: "Jorgensen et al., JACS 1996"
+    type: all-atom
+    gromacs_directory: oplsaa.ff
+
+    suitable_for:
+      proteins:
+        rating: good
+        notes: >
+          Reasonable protein parameters. Less extensively validated
+          than AMBER ff99SB-ILDN or CHARMM36 for biomolecular
+          simulations. Good for systems combining proteins with
+          organic solvents or small molecules.
+      small_molecules:
+        rating: very_good
+        notes: >
+          Excellent for organic small molecules — OPLS was originally
+          developed for liquid organic molecules. Strong choice for
+          drug-like molecules without needing separate parameterization
+          tools (many parameters built-in).
+      lipids:
+        rating: acceptable
+        notes: Limited lipid parameter set compared to CHARMM36.
+      nucleic_acids:
+        rating: acceptable
+        notes: Limited validation compared to AMBER/CHARMM.
+      carbohydrates:
+        rating: not_recommended
+        notes: Limited carbohydrate parameters.
+
+    recommended_water_models:
+      primary: TIP4P
+      acceptable:
+        - TIP3P
+        - SPCE
+        - TIP4P-EW
+      not_recommended:
+        - SPC
+        - TIP5P
+      notes: >
+        OPLS-AA was originally parameterized with TIP4P. TIP3P is
+        widely used as a faster alternative with acceptable results.
+
+    recommended_ions:
+      monovalent: Aqvist or Joung-Cheatham (TIP4P version)
+      notes: >
+        Ion parameter choice depends on water model used.
+        No single standard ion parameter set for OPLS-AA.
+
+    known_limitations:
+      - Less validated than AMBER/CHARMM for biomolecular simulations
+      - Superseded by OPLS-AA/L for protein simulations
+      - Limited carbohydrate parameters
+
+    mdp_specific_requirements:
+      rcoulomb: 1.0
+      rvdw: 1.0
+      vdwtype: Cut-off
+      vdw_modifier: Potential-shift
+      DispCorr: EnerPres
+
+  oplsaal:
+    full_name: OPLS-AA/L
+    version_introduced: 2001
+    reference: "Kaminski et al., JPCA 2001"
+    type: all-atom
+    gromacs_directory: oplsaal.ff
+    parent_ff: oplsaa
+    improvements_over_parent: >
+      Improved backbone torsion parameters for proteins. Better
+      helix-coil balance than original OPLS-AA. Currently the
+      recommended OPLS variant for protein simulations.
+
+    suitable_for:
+      proteins:
+        rating: good
+        notes: >
+          Preferred over OPLS-AA for protein simulations. Better
+          backbone torsion parameters improve helix-coil balance.
+      small_molecules:
+        rating: very_good
+        notes: Inherits excellent small molecule parameters from OPLS-AA.
+      lipids:
+        rating: acceptable
+        notes: Limited lipid parameter set.
+      nucleic_acids:
+        rating: acceptable
+        notes: Limited validation compared to AMBER/CHARMM.
+      carbohydrates:
+        rating: not_recommended
+
+    recommended_water_models:
+      primary: TIP4P
+      acceptable:
+        - TIP3P
+        - SPCE
+        - TIP4P-EW
+      not_recommended:
+        - SPC
+
+    recommended_ions:
+      monovalent: Aqvist or Joung-Cheatham (TIP4P version)
+      notes: Same water-model dependency as OPLS-AA.
+
+    known_limitations:
+      - Less validated than AMBER/CHARMM for biomolecular simulations
+      - Limited carbohydrate parameters
+
+    mdp_specific_requirements:
+      rcoulomb: 1.0
+      rvdw: 1.0
+      vdwtype: Cut-off
+      vdw_modifier: Potential-shift
+      DispCorr: EnerPres

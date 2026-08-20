@@ -1,0 +1,440 @@
+description: >
+  Rules governing the choice, dimensions, and validation of the
+  simulation box. Box geometry directly affects computational
+  efficiency, artifact risk, and physical validity of the simulation.
+  All rules apply to explicit solvent simulations unless otherwise noted.
+
+box_types:
+
+  cubic:
+    gromacs_flag: "-bt cubic"
+    shape: cube
+    all_angles_deg: 90.0
+    all_sides_equal: true
+    efficiency_vs_sphere: 0.524
+    notes: >
+      Simplest box type. Easy to visualize and analyze. Wastes
+      approximately 48% of volume on corners filled with solvent.
+      Computationally inefficient for globular proteins. Acceptable
+      for small systems or when simplicity is prioritized over
+      efficiency.
+    recommended_for:
+      - small peptides
+      - simple benchmarking runs
+      - systems where box shape does not matter
+      - intrinsically disordered proteins (with large -d value)
+    not_recommended_for:
+      - large globular proteins (use dodecahedron instead)
+      - elongated molecules (use triclinic instead)
+
+  dodecahedron:
+    gromacs_flag: "-bt dodecahedron"
+    shape: rhombic dodecahedron
+    angles_deg:
+      - 60.0
+      - 60.0
+      - 90.0
+    efficiency_vs_sphere: 0.707
+    inscribed_sphere_radius_formula: >
+      r_inscribed = box_vector * sqrt(2) / 2
+    notes: >
+      Recommended default for globular proteins. Approximately 71%
+      volume efficiency versus sphere compared to approximately 52%
+      for cubic box. Reduces number of water molecules by approximately
+      30% compared to cubic box of same minimum image distance.
+      Significantly reduces computational cost for globular systems.
+      Fully supported by GROMACS with PBC. Some visualization tools
+      require conversion to rectangular representation for display.
+    recommended_for:
+      - globular proteins
+      - protein-ligand complexes
+      - any roughly spherical solute
+      - standard protein-in-water simulations
+    not_recommended_for:
+      - membrane systems (use rectangular triclinic)
+      - elongated molecules like DNA duplexes
+      - systems requiring simple box geometry for analysis
+
+  triclinic:
+    gromacs_flag: "-bt triclinic"
+    shape: general parallelepiped
+    angles_deg: variable
+    notes: >
+      Most general box type. Required for membrane simulations
+      (rectangular triclinic with 90 degree angles). Also used for
+      elongated molecules (DNA, RNA, fibril segments) where a
+      rectangular box better matches the solute shape. Can be used
+      for any system but requires careful setup.
+    recommended_for:
+      - membrane systems
+      - elongated molecules (DNA, RNA, amyloid fibrils)
+      - crystal unit cell simulations
+    special_case_rectangular:
+      angles_deg:
+        - 90.0
+        - 90.0
+        - 90.0
+      notes: >
+        Rectangular triclinic (all 90 degree angles) is the standard
+        for membrane simulations. Allows independent X, Y, Z dimensions
+        with semiisotropic pressure coupling. Equivalent to a cubic
+        box with unequal side lengths.
+
+  octahedron:
+    gromacs_flag: "-bt octahedron"
+    shape: truncated octahedron
+    efficiency_vs_sphere: 0.770
+    notes: >
+      Highest volume efficiency at approximately 77%. Slightly more
+      efficient than dodecahedron but less commonly used due to
+      visualization complexity and limited analysis tool support.
+      Acceptable alternative to dodecahedron for globular proteins
+      when maximum efficiency is needed.
+    recommended_for:
+      - globular proteins when maximum efficiency is needed
+    caveats:
+      - Some analysis tools have limited support for octahedral boxes
+      - Less commonly used than dodecahedron in practice
+      - Prefer dodecahedron for standard simulations
+
+
+box_type_selection_guide:
+  description: >
+    Recommended box type for each system type. Used by the
+    Box Geometry Validator tool.
+
+  globular_protein: dodecahedron
+  protein_ligand_complex: dodecahedron
+  membrane_protein: triclinic_rectangular
+  DNA_duplex: triclinic_rectangular
+  RNA: triclinic_rectangular
+  small_peptide: dodecahedron
+  intrinsically_disordered_protein: cubic
+  pure_small_molecule: dodecahedron
+  notes: >
+    For IDPs, a larger cubic box is preferred to accommodate
+    extended conformations. Dodecahedron is still acceptable if
+    the box is large enough (minimum 1.5 nm solute-to-edge distance).
+
+
+dimension_rules:
+  description: >
+    Rules for determining minimum box dimensions based on solute
+    size and the minimum image convention.
+
+  minimum_image_convention:
+    description: >
+      The fundamental PBC constraint. The minimum distance between
+      a particle and its periodic image must always be greater than
+      the cutoff radius throughout the entire simulation.
+    rule: >
+      For cubic and rectangular boxes:
+        min(box_x, box_y, box_z) / 2 > rcoulomb
+      For dodecahedron:
+        inscribed_sphere_radius > rcoulomb
+      For octahedron:
+        inscribed_sphere_radius > rcoulomb
+    inscribed_sphere_formulas:
+      dodecahedron: r_inscribed = box_vector * sqrt(2) / 2
+      octahedron: r_inscribed = box_vector * sqrt(3) / 3
+    critical_note: >
+      Violation of the minimum image convention causes a particle
+      to interact with its own periodic image, introducing severe
+      and undetectable artifacts. GROMACS will warn about this
+      but may not always stop the simulation. This must be validated
+      both before the simulation starts (Layer 1) and during the
+      simulation for NPT runs where the box can change size (Layer 3).
+    severity: ERROR
+
+  minimum_solute_to_box_edge_distance:
+    description: >
+      Minimum distance from any solute atom to the nearest box edge.
+      This ensures the solute never interacts with its periodic image
+      across the box boundary during the simulation.
+    values:
+      standard_nm: 1.0
+      recommended_nm: 1.2
+      for_flexible_or_IDP_nm: 1.5
+      for_membrane_systems_nm: 0.0
+    notes: >
+      1.0 nm is the absolute minimum for rigid, folded proteins.
+      1.2 nm is recommended as standard — provides buffer for
+      conformational fluctuations during the simulation. 1.5 nm
+      for IDPs or flexible proteins that may extend significantly
+      from their starting conformation. Membrane systems use a
+      different rule based on water layer thickness rather than
+      solute-to-edge distance.
+    gromacs_editconf_flag: "-d 1.2"
+    severity_if_below_standard: ERROR
+    severity_if_below_recommended: WARNING
+
+  box_dimension_calculation:
+    for_globular_protein:
+      method: >
+        1. Calculate protein maximum extent from center of mass
+           (maximum distance from COM to any heavy atom)
+        2. box_dimension = 2 * (max_extent + solute_to_edge_distance)
+        3. For dodecahedron: use -d flag in gmx editconf which
+           automatically sets the correct box vector
+      example:
+        protein_max_extent_nm: 2.5
+        solute_to_edge_nm: 1.2
+        minimum_box_vector_nm: 7.4
+        calculation: 2 * (2.5 + 1.2) = 7.4 nm
+        notes: >
+          For a protein with 2.5 nm maximum extent from COM,
+          minimum box vector = 7.4 nm for cubic box.
+          For dodecahedron, gmx editconf -d 1.2 handles this
+          automatically.
+
+    for_elongated_molecule:
+      method: >
+        Use rectangular triclinic box. Each dimension calculated
+        independently based on molecule extent in that direction
+        plus 2 * edge_distance.
+      notes: >
+        Align molecule along longest axis before box generation
+        to minimize box volume and computational cost.
+      alignment_tool: >
+        gmx editconf with rotation flags or external alignment
+        tool before box generation.
+
+    for_membrane_system:
+      method: >
+        XY dimensions determined by lipid bilayer patch size.
+        Z dimension = bilayer_thickness + 2 * water_layer_thickness.
+      typical_values:
+        bilayer_thickness_nm: 4.0
+        water_layer_each_side_nm: 3.0
+        typical_z_nm: 10.0
+      notes: >
+        Z-axis must accommodate bilayer (approximately 4 nm) plus
+        water layers on both sides (approximately 3 nm each).
+        Minimum Z approximately 10 nm for standard membrane systems.
+
+  minimum_absolute_box_dimensions:
+    any_dimension_minimum_nm: 3.0
+    notes: >
+      No box dimension should be less than 3.0 nm regardless of
+      solute size. Very small boxes lead to severe PBC artifacts
+      and insufficient water molecules for proper solvation.
+    severity: ERROR
+
+  cutoff_box_size_validation:
+    rule: >
+      For cubic and rectangular boxes:
+        min(box_x, box_y, box_z) / 2 > rcoulomb
+      For dodecahedron:
+        box_vector * sqrt(2) / 2 > rcoulomb
+    with_standard_rcoulomb_1nm:
+      minimum_cubic_box_nm: 2.1
+      minimum_dodecahedron_vector_nm: 2.1
+      recommended_cubic_box_nm: 6.0
+      notes: >
+        2.1 nm is the theoretical minimum with 1.0 nm cutoff.
+        In practice, protein plus solvation shell always exceeds
+        this. Flag as ERROR if box_dimension / 2 <= rcoulomb.
+    with_charmm_rcoulomb_1p2nm:
+      minimum_cubic_box_nm: 2.5
+      minimum_dodecahedron_vector_nm: 2.5
+      notes: >
+        CHARMM force fields use 1.2 nm cutoff — minimum box
+        dimension must be greater than 2.4 nm. In practice
+        always satisfied for protein systems.
+    severity: ERROR
+
+
+pbc_rules:
+  description: >
+    Periodic Boundary Condition settings and validation rules.
+
+  pbc_setting:
+    parameter: pbc
+    required_value: xyz
+    allowed_values:
+      - xyz
+      - "no"
+      - xy
+    notes: >
+      xyz (full 3D PBC) is mandatory for all explicit solvent
+      simulations. 'no' only for vacuum simulations (rare and
+      specialized). 'xy' for 2D PBC surface simulations (very
+      specialized, not covered by standard validation).
+    severity_if_not_xyz: ERROR
+
+  trajectory_postprocessing:
+    nojump_correction:
+      description: >
+        Trajectories must be post-processed with gmx trjconv
+        -pbc nojump before most analyses to remove artificial
+        jumps from PBC wrapping. Molecules that cross box
+        boundaries appear to jump discontinuously in the raw
+        trajectory.
+      tool: gmx trjconv -pbc nojump
+      required_before:
+        - RMSD analysis
+        - RMSF analysis
+        - diffusion coefficient calculation
+        - end-to-end distance calculation
+        - any distance-based analysis
+      severity_if_missing: ERROR
+
+    molecule_centering:
+      description: >
+        Protein should be centered in the box for visualization
+        and some analyses. Use gmx trjconv -center.
+      tool: gmx trjconv -center
+      required_before:
+        - visualization
+        - some structural analyses
+      severity_if_missing: WARNING
+
+    whole_molecule_reconstruction:
+      description: >
+        Molecules split across PBC boundaries must be made whole
+        before analysis. Use gmx trjconv -pbc mol or -pbc whole.
+      tool: gmx trjconv -pbc mol
+      required_before:
+        - radius of gyration calculation
+        - secondary structure analysis
+        - any analysis requiring intact molecule
+      severity_if_missing: ERROR
+
+
+system_specific_box_rules:
+  description: >
+    Box geometry overrides and additions for specific system types.
+
+  membrane_systems:
+    box_type: triclinic_rectangular
+    pressure_coupling_type: semiisotropic
+    water_layer_each_side_nm: 3.0
+    minimum_water_layer_nm: 2.5
+    lipid_bilayer_rules:
+      minimum_lipids_per_leaflet: 64
+      recommended_lipids_per_leaflet: 128
+      notes: >
+        Fewer than 64 lipids per leaflet leads to significant
+        finite-size effects in membrane properties (area per lipid,
+        bending modulus). 128 or more per leaflet recommended for
+        membrane protein simulations.
+    box_dimension_rules:
+      xy_plane: determined by lipid bilayer patch size
+      z_axis: bilayer_thickness + 2 * water_layer_thickness
+      typical_z_nm: 10.0
+      minimum_z_nm: 9.0
+    special_mdp_requirements:
+      pcoupltype: semiisotropic
+      ref_p: "1.0 1.0"
+      compressibility: "4.5e-5 4.5e-5"
+      notes: >
+        Two values required for semiisotropic coupling:
+        first value for XY plane, second value for Z axis.
+
+  intrinsically_disordered_proteins:
+    box_type: cubic
+    minimum_solute_to_edge_nm: 1.5
+    extended_conformation_check:
+      description: >
+        For IDPs, estimate maximum possible end-to-end distance
+        and ensure box accommodates it.
+      formula: >
+        max_end_to_end_nm = n_residues * 0.38
+        (fully extended beta-strand conformation, upper bound)
+        box_dimension > max_end_to_end_nm + 2 * edge_distance
+      example:
+        n_residues: 100
+        max_end_to_end_nm: 38.0
+        edge_distance_nm: 1.5
+        minimum_box_nm: 41.0
+        practical_note: >
+          This is a conservative upper bound. In practice IDPs
+          rarely reach full extension. A box of 15-20 nm is
+          typically sufficient for a 100-residue IDP. Monitor
+          during simulation to ensure protein never approaches
+          box edge.
+    notes: >
+      IDPs can adopt highly extended conformations. Larger box
+      required to prevent self-interaction across PBC. Use cubic
+      box with at least 1.5 nm solute-to-edge distance.
+
+  nucleic_acid_systems:
+    box_type: triclinic_rectangular
+    minimum_solute_to_edge_nm: 1.5
+    axis_alignment:
+      description: >
+        Align DNA/RNA helix axis along Z-axis before box generation
+        to minimize box volume for elongated structures.
+      tool: gmx editconf with rotation or external alignment tool
+      notes: >
+        Proper alignment can reduce box volume by 30-50% for
+        elongated nucleic acid structures compared to random
+        orientation.
+
+  protein_ligand_systems:
+    box_type: dodecahedron
+    minimum_solute_to_edge_nm: 1.2
+    additional_checks:
+      ligand_within_binding_site:
+        description: >
+          Verify ligand is positioned within the protein binding
+          site, not floating in solvent.
+        check: >
+          Minimum distance between any ligand atom and any protein
+          atom should be less than 0.5 nm for a bound complex.
+        warning_threshold_nm: 0.8
+        notes: >
+          If minimum ligand-protein distance exceeds 0.8 nm,
+          the ligand may not be correctly docked in the binding
+          site. Verify the starting structure.
+
+
+validation_checks_box_geometry:
+  description: >
+    Complete list of box geometry validation checks performed
+    before solvation. Checks are numbered BS001-BS004 to match
+    the full validation checks registry.
+
+  BS001:
+    name: Box type appropriate for system
+    check: >
+      box_type in recommended_types_for_system_type
+    severity: WARNING
+    message: >
+      Box type {box_type} is not recommended for {system_type}.
+      Recommended box type: {recommended_box_type}.
+      Using a suboptimal box type increases computational cost
+      but does not affect simulation correctness.
+
+  BS002:
+    name: Minimum image convention satisfied
+    check: >
+      For cubic/rectangular: min(box_x, box_y, box_z) / 2 > rcoulomb
+      For dodecahedron: box_vector * sqrt(2) / 2 > rcoulomb
+    severity: ERROR
+    message: >
+      Box dimensions violate minimum image convention.
+      Effective box radius = {value} nm is less than or equal to
+      rcoulomb = {rcoulomb} nm. Increase box size using a larger
+      -d value in gmx editconf or reduce cutoff radius.
+
+  BS003:
+    name: Solute to box edge distance sufficient
+    check: >
+      min_solute_to_edge >= minimum_required_for_system_type
+    severity: ERROR
+    message: >
+      Minimum solute-to-box-edge distance {value} nm is less than
+      required {minimum} nm for system type {system_type}.
+      Risk of solute interacting with its periodic image during
+      simulation. Regenerate box with larger -d value in gmx editconf.
+
+  BS004:
+    name: Box dimensions above absolute minimum
+    check: >
+      all(dim >= 3.0 for dim in box_dimensions)
+    severity: ERROR
+    message: >
+      Box dimension {dim_value} nm is below absolute minimum of
+      3.0 nm. This box is too small for any meaningful explicit
+      solvent simulation. Regenerate with larger box dimensions.

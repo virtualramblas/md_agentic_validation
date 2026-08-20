@@ -1,0 +1,593 @@
+description: >
+  Rules governing the addition of ions for charge neutralization
+  and physiological salt concentration. Incorrect ion handling
+  is a common source of simulation artifacts. All ion addition
+  must be performed after solvation and before energy minimization.
+  The system must be charge-neutral before any MD simulation.
+
+neutralization_rules:
+  description: >
+    Rules ensuring the simulation system has zero net charge
+    before MD begins. Non-zero charge with PBC creates an
+    infinite charged system that is physically meaningless
+    and produces artifacts in PME electrostatics.
+
+  charge_neutrality_requirement:
+    rule: >
+      The total charge of the simulation system MUST be zero
+      before starting any MD simulation.
+    formula: >
+      total_charge = protein_charge
+                   + ligand_charge
+                   + cofactor_charge
+                   + structural_ion_charge
+                   + bulk_ion_charge
+      assert abs(total_charge) < 0.01
+    severity: ERROR
+    notes: >
+      Non-zero total charge with PBC creates an infinite charged
+      system, which is physically meaningless and leads to artifacts
+      in electrostatic calculations with PME. GROMACS will warn
+      about non-zero charge but may proceed — the validator must
+      enforce this as a hard error.
+
+  protein_charge_calculation:
+    description: >
+      Method for calculating the net charge of the protein
+      component at the simulation pH.
+    method: >
+      Sum of formal charges of all ionizable residues at
+      simulation pH, plus N-terminus and C-terminus contributions.
+    ionizable_residues:
+      ASP:
+        standard_charge: -1.0
+        protonated_charge: 0.0
+        protonated_residue_name: ASPH
+        notes: Deprotonated (charged) at physiological pH.
+      GLU:
+        standard_charge: -1.0
+        protonated_charge: 0.0
+        protonated_residue_name: GLUH
+        notes: Deprotonated (charged) at physiological pH.
+      LYS:
+        standard_charge: +1.0
+        deprotonated_charge: 0.0
+        deprotonated_residue_name: LYN
+        notes: Protonated (charged) at physiological pH.
+      ARG:
+        standard_charge: +1.0
+        notes: Always protonated at physiological pH.
+      HIS:
+        HIE:
+          charge: 0.0
+          description: Epsilon-protonated histidine (neutral)
+        HID:
+          charge: 0.0
+          description: Delta-protonated histidine (neutral)
+        HIP:
+          charge: +1.0
+          description: Doubly-protonated histidine (charged)
+        notes: >
+          Histidine protonation state must be explicitly set.
+          Default assignment by GROMACS pdb2gmx may not be correct
+          for all residues. Always verify histidine protonation
+          states using pKa prediction tools (e.g., PROPKA, H++) or
+          visual inspection of the local environment. Flag all HIP
+          assignments for manual review.
+      CYS:
+        standard_charge: 0.0
+        disulfide_bonded_charge: 0.0
+        deprotonated_charge: -1.0
+        notes: >
+          Standard cysteine is neutral. Deprotonated cysteine
+          (CYM) is rare at physiological pH but occurs in some
+          metalloenzyme active sites. Disulfide-bonded cysteines
+          are neutral.
+      TYR:
+        standard_charge: 0.0
+        deprotonated_charge: -1.0
+        notes: >
+          Rarely deprotonated at physiological pH (pKa ~10).
+          Flag deprotonated tyrosine for manual review.
+      N_terminus:
+        standard_charge: +1.0
+        notes: >
+          Free N-terminus is protonated (charged) at physiological
+          pH. If N-terminus is capped (ACE), charge is 0.
+      C_terminus:
+        standard_charge: -1.0
+        notes: >
+          Free C-terminus is deprotonated (charged) at physiological
+          pH. If C-terminus is capped (NME), charge is 0.
+    validation_check: >
+      Verify that pdb2gmx protonation state assignments are
+      consistent with the intended simulation pH. Flag any
+      HIS residues assigned as HIP (charged) for review.
+      Flag any non-standard protonation states for manual
+      verification before proceeding.
+
+  counterion_addition:
+    tool: gmx genion
+    purpose: >
+      Replace randomly selected water molecules with ions to
+      achieve charge neutrality and target salt concentration.
+    required_flags:
+      - flag: "-s"
+        description: >
+          Input .tpr file generated from a minimal grompp run.
+          Required by genion to read system information.
+      - flag: "-o"
+        description: Output structure file with ions added.
+      - flag: "-p"
+        description: >
+          Topology file. Updated automatically by genion with
+          correct ion counts and reduced water count.
+      - flag: "-pname"
+        description: >
+          Positive ion residue name. Must match force field
+          naming convention (e.g., NA for AMBER, SOD for CHARMM).
+      - flag: "-nname"
+        description: >
+          Negative ion residue name. Must match force field
+          naming convention (e.g., CL for AMBER, CLA for CHARMM).
+      - flag: "-neutral"
+        description: >
+          Add sufficient counterions to neutralize system charge.
+          Always use this flag.
+      - flag: "-conc"
+        description: >
+          Target salt concentration in mol/L. Use 0.15 for
+          physiological NaCl concentration.
+        recommended_value: 0.15
+    notes: >
+      Always use both -neutral and -conc flags together.
+      -neutral ensures charge neutrality; -conc adds additional
+      ions beyond neutralization to reach physiological salt
+      concentration. Using -neutral alone gives a neutralized
+      system with no bulk salt, which is not physiologically
+      realistic.
+
+  ions_mdp_requirements:
+    description: >
+      A minimal .mdp file is required for grompp before genion.
+      This is NOT a simulation MDP — just for generating the .tpr
+      file that genion requires.
+    required_parameters:
+      integrator: steep
+      nsteps: 0
+      cutoff-scheme: Verlet
+      rcoulomb: 1.0
+      rvdw: 1.0
+      coulombtype: PME
+    notes: >
+      Using nsteps=0 with steep integrator creates a valid .tpr
+      without running any simulation. This is the standard approach
+      for the genion preprocessing step. The MDP parameters here
+      do not affect the final simulation — they only need to be
+      valid enough for grompp to generate a .tpr file.
+
+
+concentration_rules:
+  description: >
+    Rules for determining the correct salt concentration and
+    ion counts for the simulation system.
+
+  physiological_NaCl:
+    concentration_mM: 150
+    concentration_M: 0.15
+    ion_type: NaCl
+    notes: >
+      150 mM NaCl is the standard physiological salt concentration.
+      Add Na+ and Cl- beyond neutralization to reach this
+      concentration. Required for realistic electrostatic screening
+      and ion-protein interactions.
+
+  alternative_concentrations:
+    low_salt:
+      concentration_mM: 50
+      use_case: >
+        Some in vitro experiments use low salt conditions.
+        Use when matching specific experimental conditions.
+      severity: INFO
+      message: >
+        Low salt concentration (50 mM) specified. Verify this
+        matches the experimental conditions being simulated.
+
+    high_salt:
+      concentration_mM: 300
+      use_case: >
+        Stability studies, halophilic proteins, or matching
+        specific high-salt experimental conditions.
+      severity: INFO
+      message: >
+        High salt concentration (300 mM) specified. Verify this
+        matches the experimental conditions being simulated.
+
+    no_salt:
+      concentration_mM: 0
+      use_case: >
+        Neutralization only. Acceptable for some studies but
+        not physiologically realistic for most applications.
+      severity: WARNING
+      message: >
+        System has no added salt beyond charge neutralization.
+        This is not physiologically realistic. Consider adding
+        0.15 M NaCl unless matching specific experimental
+        conditions that require salt-free buffer.
+
+  ion_count_calculation:
+    formula: >
+      n_ion_pairs = round(concentration_M
+                          * N_Avogadro
+                          * box_volume_L)
+      where:
+        N_Avogadro = 6.022e23 mol^-1
+        box_volume_L = box_volume_nm3 * 1e-24
+    example:
+      box_volume_nm3: 343.0
+      box_volume_L: 3.43e-22
+      concentration_M: 0.15
+      n_ion_pairs: 31
+      calculation: >
+        round(0.15 * 6.022e23 * 3.43e-22) = round(30.9) = 31
+      notes: >
+        For a 7x7x7 nm cubic box with 0.15 M NaCl:
+        approximately 31 Na+ and 31 Cl- ion pairs before
+        neutralization adjustment.
+    gromacs_flag: "-conc 0.15"
+    notes: >
+      gmx genion -conc flag automatically calculates the correct
+      number of ions for the target concentration. Preferred over
+      manual calculation to avoid rounding errors. The -neutral
+      flag then adjusts the final counts to achieve charge neutrality.
+
+  minimum_ion_counts:
+    minimum_counterions: 1
+    notes: >
+      If protein has net charge of +1, add at least 1 Cl-.
+      Never leave a charged system without counterions.
+    warning_threshold: >
+      If total ion count (neutralization + salt) is less than 10,
+      flag a warning — very few ions may not represent bulk
+      electrolyte behavior and may show strong finite-size effects.
+    severity_if_zero_counterions: ERROR
+    severity_if_below_10_total: WARNING
+
+  nucleic_acid_ion_requirements:
+    minimum_monovalent_mM: 150
+    recommended_monovalent_mM: 150
+    magnesium_for_RNA:
+      recommended_mM: 2.0
+      notes: >
+        Mg2+ is important for RNA folding and stability.
+        Add 2-5 mM MgCl2 for RNA simulations unless studying
+        Mg2+-free conditions explicitly. Mg2+ requires special
+        parameterization (Li-Merz 12-6 or 12-6-4 model).
+    notes: >
+      Nucleic acids are highly negatively charged. Higher ion
+      concentration is critical for charge screening and structural
+      stability. Never simulate nucleic acids with neutralization
+      only — always add physiological salt concentration.
+
+
+ion_placement_rules:
+  description: >
+    Rules governing where ions are placed in the simulation box
+    by gmx genion.
+
+  minimum_distance_from_solute:
+    from_protein_nm: 0.6
+    from_membrane_nm: 0.5
+    notes: >
+      Ions must not be placed too close to the protein surface.
+      gmx genion handles this automatically with default settings.
+      Verify that no ion is within 0.6 nm of any protein atom
+      in the initial structure after genion completes.
+    severity_if_violated: WARNING
+
+  ion_replacement_of_water:
+    description: >
+      gmx genion replaces randomly selected water molecules with
+      ions. The number of water molecules in the topology must
+      be updated accordingly.
+    validation_check: >
+      n_water_after_genion = n_water_before_genion
+                           - n_Na_added
+                           - n_Cl_added
+                           - n_other_ions_added
+      assert topology_water_count == n_water_after_genion
+    severity: ERROR
+    message: >
+      Water count not correctly updated after ion addition.
+      Expected {expected} waters, found {actual} in topology.
+      The topology was not correctly updated by gmx genion.
+
+  structural_ions:
+    description: >
+      Some proteins have structurally important ions (e.g., Zn2+
+      in zinc fingers, Ca2+ in calmodulin, Mg2+ in kinases).
+      These must be added BEFORE bulk ion addition and must NOT
+      be replaced by genion.
+    examples:
+      zinc_fingers: Zn2+
+      calmodulin: Ca2+
+      kinases: Mg2+
+      iron_sulfur_clusters: Fe2+/Fe3+
+    validation_check: >
+      Verify structural ions from PDB HETATM records are
+      present in topology with correct force field parameters.
+      Verify genion was run AFTER structural ions were added
+      to prevent genion from replacing them with bulk ions.
+    parameterization_note: >
+      Structural ions require special parameterization.
+      Use Li-Merz 12-6-4 for Zn2+, Mg2+, Ca2+ where coordination
+      geometry is scientifically important. Flag any divalent or
+      trivalent ion in the active site for manual parameter review.
+    severity: WARNING
+    message: >
+      Metal binding site detected in protein structure but no
+      structural ions found in topology. Verify whether metal
+      ions should be included and parameterized before proceeding
+      with bulk ion addition.
+
+  membrane_ion_placement:
+    description: >
+      For membrane systems, ions should be placed only in the
+      water phase, not within the membrane hydrophobic core.
+    validation_check: >
+      Verify no ion is within the hydrophobic core of the
+      membrane (typically defined by the lipid tail region,
+      approximately between the glycerol groups of each leaflet).
+    severity: ERROR
+    message: >
+      Ion {ion_id} found within membrane hydrophobic core at
+      z-position {z_pos} nm. Re-run genion with appropriate
+      distance constraints to prevent ion placement in membrane.
+
+  ion_distribution_check:
+    description: >
+      After ion addition, verify ions are reasonably distributed
+      throughout the solvent, not clustered in one region.
+    method: >
+      Check minimum and maximum distances between ions of the
+      same charge. Ions of the same charge should not be
+      clustered closer than 0.5 nm in the initial structure.
+    notes: >
+      gmx genion uses random placement with distance constraints,
+      so clustering is unlikely but worth verifying for very
+      high ion concentrations (above 500 mM).
+    severity: WARNING
+
+
+ion_naming_validation:
+  description: >
+    Validation rules for ion residue names in topology and
+    structure files. Ion names must match the force field
+    naming convention exactly.
+
+  amber_ion_names:
+    sodium: NA
+    potassium: K
+    chloride: CL
+    calcium: CA
+    magnesium: MG
+    zinc: ZN
+    validation_check: >
+      When using AMBER force fields, verify all ion residue
+      names in topology and .gro file match AMBER conventions.
+    severity_if_wrong: ERROR
+    message: >
+      Ion residue name {found_name} does not match AMBER
+      convention. Expected {expected_name} for {ion_type}.
+      Wrong ion names cause fatal topology errors during grompp.
+
+  charmm_ion_names:
+    sodium: SOD
+    potassium: POT
+    chloride: CLA
+    calcium: CAL
+    magnesium: MG
+    zinc: ZN2
+    validation_check: >
+      When using CHARMM force fields, verify all ion residue
+      names in topology and .gro file match CHARMM conventions.
+    severity_if_wrong: ERROR
+    message: >
+      Ion residue name {found_name} does not match CHARMM
+      convention. Expected {expected_name} for {ion_type}.
+      Wrong ion names cause fatal topology errors during grompp.
+
+  gromos_ion_names:
+    sodium: "NA+"
+    potassium: "K+"
+    chloride: "CL-"
+    calcium: "CA2+"
+    magnesium: "MG2+"
+    validation_check: >
+      When using GROMOS force fields, verify all ion residue
+      names match GROMOS conventions including charge notation.
+    severity_if_wrong: ERROR
+
+
+topology_update_after_ionization:
+  description: >
+    Requirements for the topology file after ion addition.
+
+  molecules_section_order:
+    description: >
+      The molecules section of the topology must follow GROMACS
+      convention after ion addition.
+    required_order:
+      1: protein_or_primary_solute
+      2: ligand_or_cofactor_if_present
+      3: structural_ions_if_present
+      4: bulk_ions_Na_or_K
+      5: bulk_ions_Cl
+      6: water_molecules
+    notes: >
+      GROMACS convention places ions before water in the molecules
+      section. Some protocols place ions after water — both are
+      accepted by GROMACS but the order must be consistent between
+      topology and structure file. Wrong order causes grompp errors
+      with atom count mismatch.
+    severity_if_wrong_order: ERROR
+
+  required_checks_after_genion:
+    - system_total_charge_is_zero
+    - water_count_correctly_reduced
+    - ion_count_matches_target_concentration
+    - ion_names_match_force_field_convention
+    - topology_molecule_order_correct
+    - no_ion_within_minimum_distance_of_protein
+
+
+ionization_validation_checks:
+  description: >
+    Complete list of ionization-specific validation checks.
+    Numbered BS011-BS017 to match the full validation checks registry.
+
+  BS011:
+    name: System charge neutrality
+    check: abs(total_system_charge) < 0.01
+    severity: ERROR
+    message: >
+      System has non-zero total charge: {charge:.2f} e.
+      Add {abs_charge} counterion(s) to neutralize.
+      Non-neutral systems with PBC produce unphysical results
+      and artifacts in PME electrostatic calculations.
+
+  BS012:
+    name: Ion names match force field convention
+    check: >
+      all ion residue names in topology match expected names
+      for chosen force field family
+    severity: ERROR
+    message: >
+      Ion residue name {ion_name} not recognized for force field
+      {ff_name}. Expected: {expected_name}. Wrong ion names cause
+      fatal topology errors during grompp preprocessing.
+
+  BS013:
+    name: Water count updated after ion addition
+    check: >
+      n_water_after_ions == n_water_before_ions - n_ions_added
+    severity: ERROR
+    message: >
+      Water count not correctly updated after ion addition.
+      Expected {expected} waters, found {actual} in topology.
+      Topology and structure file are inconsistent.
+
+  BS014:
+    name: Minimum ion distance from protein
+    check: min_ion_protein_distance >= 0.6
+    severity: WARNING
+    message: >
+      Ion {ion_id} ({ion_type}) is only {distance:.2f} nm from
+      protein. Minimum recommended distance: 0.6 nm. Consider
+      re-running genion or checking for misidentified structural
+      ions that should be parameterized separately.
+
+  BS015:
+    name: Salt concentration within physiological range
+    check: 50 <= calculated_salt_concentration_mM <= 500
+    severity: WARNING
+    message: >
+      Salt concentration {conc:.0f} mM is outside typical
+      physiological range [50, 500] mM. Verify this matches
+      the experimental conditions being simulated.
+
+  BS016:
+    name: Structural ions present if metal binding site detected
+    check: >
+      if system_has_metal_binding_site:
+        structural_ions_present_in_topology == True
+    severity: WARNING
+    message: >
+      Metal binding site detected in protein structure (residues:
+      {binding_site_residues}) but no structural ions found in
+      topology. Verify whether metal ions should be included and
+      parameterized before proceeding.
+
+  BS017:
+    name: No ions inside membrane hydrophobic core
+    check: >
+      if system_type == membrane:
+        no ion within hydrophobic_core_z_range
+    severity: ERROR
+    message: >
+      Ion {ion_id} found within membrane hydrophobic core at
+      z-position {z_pos:.2f} nm. Re-run genion with appropriate
+      distance constraints to prevent ion placement in membrane.
+
+
+common_ionization_mistakes:
+  description: >
+    Catalog of frequent mistakes during the ionization step.
+
+  forgetting_neutral_flag:
+    description: >
+      Running gmx genion with -conc but without -neutral flag.
+    consequence: >
+      System may not be charge-neutral if the ion counts from
+      -conc alone do not exactly balance the protein charge.
+    detection: >
+      Check total system charge after genion. If non-zero,
+      -neutral flag was likely omitted.
+    severity: ERROR
+
+  wrong_ion_names_for_force_field:
+    description: >
+      Using AMBER ion names (NA, CL) with CHARMM force field
+      or CHARMM ion names (SOD, CLA) with AMBER force field.
+    consequence: >
+      Fatal grompp error due to unrecognized residue names in
+      topology. Simulation cannot proceed.
+    detection: >
+      Check -pname and -nname flags in genion command against
+      force field naming convention.
+    severity: ERROR
+
+  adding_ions_before_solvation:
+    description: >
+      Attempting to add ions before water molecules are present.
+    consequence: >
+      genion requires water molecules to replace with ions.
+      Will fail with insufficient solvent molecules error.
+    detection: >
+      Verify solvation step completed successfully before
+      running genion.
+    severity: ERROR
+
+  not_updating_topology:
+    description: >
+      Running genion without -p flag so topology is not updated.
+    consequence: >
+      Topology and structure file are inconsistent. grompp will
+      fail with atom count mismatch error.
+    detection: >
+      Verify topology molecules section contains ion entries
+      and reduced water count after genion.
+    severity: ERROR
+
+  replacing_structural_ions:
+    description: >
+      Running genion before adding structural ions, causing
+      genion to place bulk ions in the metal binding site.
+    consequence: >
+      Wrong ion type in binding site. Incorrect coordination
+      geometry and missing structural constraints.
+    detection: >
+      Verify structural ions from PDB HETATM records are
+      present in topology before running genion.
+    severity: WARNING
+
+  insufficient_salt_concentration:
+    description: >
+      Adding only neutralization counterions without bulk salt.
+    consequence: >
+      Not physiologically realistic. May affect protein stability,
+      electrostatic screening, and comparison with experiment.
+    detection: >
+      Check if -conc flag was used with genion. If only -neutral
+      was used, no bulk salt was added.
+    severity: WARNING
