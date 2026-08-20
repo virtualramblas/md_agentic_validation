@@ -78,8 +78,8 @@ production_md:
       continuation:
         type: enum
         required: true
-        allowed_values: [yes]
-        forbidden_values: [no]
+        allowed_values: ["yes"]
+        forbidden_values: ["no"]
         notes: >
           MUST be 'yes' — continuing from NPT checkpoint. Ensures
           correct velocities and box dimensions from equilibrated state.
@@ -285,7 +285,7 @@ production_md:
         required: true
         allowed_values: [EnerPres]
         recommended: EnerPres
-        forbidden_values: [no]
+        forbidden_values: ["no"]
         notes: >
           Mandatory for NPT production. Critical for correct density,
           pressure, and thermodynamic properties.
@@ -297,7 +297,7 @@ production_md:
         required: true
         allowed_values: [v-rescale, nose-hoover]
         recommended: nose-hoover
-        forbidden_values: [no, berendsen, andersen]
+        forbidden_values: ["no", berendsen, andersen]
         notes: >
           Nose-Hoover is RECOMMENDED for production MD — it correctly
           samples the canonical (NVT) ensemble and produces physically
@@ -345,7 +345,7 @@ production_md:
         required: true
         allowed_values: [parrinello-rahman, c-rescale]
         recommended: parrinello-rahman
-        forbidden_values: [no, berendsen, mttk]
+        forbidden_values: ["no", berendsen, mttk]
         notes: >
           Parrinello-Rahman is MANDATORY for production NPT — it correctly
           samples the isothermal-isobaric ensemble. Berendsen is FORBIDDEN
@@ -399,8 +399,8 @@ production_md:
       gen-vel:
         type: enum
         required: true
-        allowed_values: [no]
-        forbidden_values: [yes]
+        allowed_values: ["no"]
+        forbidden_values: ["yes"]
         notes: >
           MUST be 'no' — velocities read from NPT checkpoint.
           Regenerating velocities for production would discard all

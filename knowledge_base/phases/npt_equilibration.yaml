@@ -64,8 +64,8 @@ npt_equilibration:
       continuation:
         type: enum
         required: true
-        allowed_values: [yes]
-        forbidden_values: [no]
+        allowed_values: ["yes"]
+        forbidden_values: ["no"]
         notes: >
           MUST be 'yes' — continuing from NVT checkpoint. Setting 'no'
           would restart the simulation from scratch, losing NVT
@@ -233,7 +233,7 @@ npt_equilibration:
         required: true
         allowed_values: [EnerPres]
         recommended: EnerPres
-        forbidden_values: [no]
+        forbidden_values: ["no"]
         notes: >
           EnerPres is MANDATORY for NPT simulations. Dispersion correction
           is critical for accurate density and pressure. Omitting it leads
@@ -246,7 +246,7 @@ npt_equilibration:
         required: true
         allowed_values: [v-rescale, nose-hoover]
         recommended: v-rescale
-        forbidden_values: [no, berendsen]
+        forbidden_values: ["no", berendsen]
         notes: >
           Same recommendation as NVT. v-rescale for equilibration.
           Must be consistent with NVT phase to avoid discontinuities.
@@ -285,7 +285,7 @@ npt_equilibration:
         required: true
         allowed_values: [berendsen, c-rescale, parrinello-rahman]
         recommended: berendsen
-        forbidden_values: [no, mttk]
+        forbidden_values: ["no", mttk]
         notes: >
           Berendsen is recommended for NPT EQUILIBRATION (not production)
           because it drives the system to target pressure quickly and
@@ -350,8 +350,8 @@ npt_equilibration:
       gen-vel:
         type: enum
         required: true
-        allowed_values: [no]
-        forbidden_values: [yes]
+        allowed_values: ["no"]
+        forbidden_values: ["yes"]
         notes: >
           MUST be 'no' — velocities are read from NVT checkpoint file.
           Regenerating velocities would discard NVT equilibration and

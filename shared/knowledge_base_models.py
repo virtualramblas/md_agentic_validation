@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -94,14 +94,76 @@ class MDPParameterSchema(BaseModel):
     depends_on: Optional[dict[str, DependencyRule]] = None
     notes: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bool_to_str_in_value_lists(
+        cls, values: Any
+    ) -> Any:
+        """
+        YAML automatically parses bare 'no' and 'yes' tokens
+        as Python booleans (False and True respectively).
+        This validator coerces them back to their string
+        equivalents before Pydantic validates the field types.
+
+        Affected fields:
+          - allowed_values  (list of strings)
+          - forbidden_values (list of strings)
+          - recommended     (scalar string/float/int)
+
+        Example YAML that triggers this:
+          allowed_values: [no]       # parsed as [False]
+          forbidden_values: [yes]    # parsed as [True]
+          recommended: no            # parsed as False
+
+        After coercion:
+          allowed_values: ["no"]
+          forbidden_values: ["yes"]
+          recommended: "no"
+        """
+        if not isinstance(values, dict):
+            return values
+
+        bool_to_str: dict[bool, str] = {
+            True: "yes",
+            False: "no",
+        }
+
+        # Coerce list fields
+        for field_name in (
+            "allowed_values",
+            "forbidden_values",
+            "recommended_values",
+        ):
+            raw = values.get(field_name)
+            if isinstance(raw, list):
+                values[field_name] = [
+                    bool_to_str[item]
+                    if isinstance(item, bool)
+                    else item
+                    for item in raw
+                ]
+
+        # Coerce scalar recommended value
+        rec = values.get("recommended")
+        if isinstance(rec, bool):
+            values["recommended"] = bool_to_str[rec]
+
+        return values
+
     @model_validator(mode="after")
     def validate_enum_has_allowed_values(
         self,
     ) -> "MDPParameterSchema":
+        """
+        Enum parameters must declare their allowed values.
+        Without allowed_values, the schema checker cannot
+        validate whether a proposed MDP value is permitted.
+        """
         if self.type == ParameterType.ENUM:
             if not self.allowed_values:
                 raise ValueError(
-                    "Enum parameters must define allowed_values"
+                    f"Enum parameter must define "
+                    f"allowed_values"
                 )
         return self
 
@@ -109,14 +171,18 @@ class MDPParameterSchema(BaseModel):
     def validate_numeric_has_bounds(
         self,
     ) -> "MDPParameterSchema":
+        """
+        Numeric parameters must declare at least one bound
+        (min or max) so the range validator can check values.
+        """
         if self.type in (
             ParameterType.FLOAT,
             ParameterType.INTEGER,
         ):
             if self.min is None and self.max is None:
                 raise ValueError(
-                    "Numeric parameters must define at least "
-                    "one of min or max"
+                    f"Numeric parameter must define "
+                    f"at least one of min or max"
                 )
         return self
 
@@ -179,6 +245,38 @@ class MDPRequirements(BaseModel):
     vdwtype: Optional[str] = None
     critical_note: Optional[str] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bool_to_str_in_mdp_requirements(
+        cls, values: Any
+    ) -> Any:
+        """
+        Coerce boolean values in MDP requirements fields.
+        Specifically handles DispCorr: no which YAML parses
+        as DispCorr: False.
+        """
+        if not isinstance(values, dict):
+            return values
+
+        bool_to_str: dict[bool, str] = {
+            True: "yes",
+            False: "no",
+        }
+
+        for field_name in (
+            "DispCorr",
+            "vdw_modifier",
+            "coulombtype",
+            "vdwtype",
+            "critical_note",
+            "notes",
+        ):
+            val = values.get(field_name)
+            if isinstance(val, bool):
+                values[field_name] = bool_to_str[val]
+
+        return values
 
 
 class ForceFieldSchema(BaseModel):
@@ -260,6 +358,34 @@ class ForbiddenCombination(BaseModel):
     combination: dict[str, str]
     reason: str
     severity: Severity
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bool_in_combination(
+        cls, values: Any
+    ) -> Any:
+        """
+        Coerce boolean values inside the combination dict.
+        YAML may parse values like DispCorr: no as False.
+        """
+        if not isinstance(values, dict):
+            return values
+
+        bool_to_str: dict[bool, str] = {
+            True: "yes",
+            False: "no",
+        }
+
+        combo = values.get("combination")
+        if isinstance(combo, dict):
+            values["combination"] = {
+                k: bool_to_str[v]
+                if isinstance(v, bool)
+                else v
+                for k, v in combo.items()
+            }
+
+        return values
 
 
 class CompatibilityMatrixSchema(BaseModel):
@@ -343,11 +469,15 @@ class CommonMistakesRegistry(BaseModel):
     warnings: list[CommonMistake]
 
     def get_all(self) -> list[CommonMistake]:
+        """Return all mistakes regardless of severity."""
         return self.critical_errors + self.warnings
 
     def get_by_id(
         self, mistake_id: str
     ) -> Optional[CommonMistake]:
+        """
+        Return a mistake by its ID, or None if not found.
+        """
         return next(
             (
                 m for m in self.get_all()
@@ -355,3 +485,27 @@ class CommonMistakesRegistry(BaseModel):
             ),
             None,
         )
+
+    def get_by_severity(
+        self, severity: Severity
+    ) -> list[CommonMistake]:
+        """Return all mistakes of a given severity."""
+        return [
+            m for m in self.get_all()
+            if m.severity == severity
+        ]
+
+    def get_by_phase(
+        self, phase: str
+    ) -> list[CommonMistake]:
+        """
+        Return all mistakes applicable to a given phase.
+        Includes mistakes with no phase restriction.
+        """
+        return [
+            m for m in self.get_all()
+            if (
+                m.applicable_phases is None
+                or phase in m.applicable_phases
+            )
+        ]

@@ -228,7 +228,7 @@ nvt_equilibration:
       DispCorr:
         type: enum
         required: false
-        allowed_values: [EnerPres, Ener, no]
+        allowed_values: [EnerPres, Ener, "no"]
         recommended: EnerPres
         notes: >
           EnerPres recommended. Applies long-range dispersion correction
@@ -241,7 +241,7 @@ nvt_equilibration:
         required: true
         allowed_values: [v-rescale, nose-hoover]
         recommended: v-rescale
-        forbidden_values: [no, berendsen, andersen]
+        forbidden_values: ["no", berendsen, andersen]
         notes: >
           v-rescale (velocity rescaling with stochastic term) is recommended
           for equilibration — correctly samples canonical ensemble.
@@ -293,7 +293,7 @@ nvt_equilibration:
       pcoupl:
         type: enum
         required: true
-        allowed_values: [no]
+        allowed_values: ["no"]
         forbidden_values: [berendsen, parrinello-rahman,
                            mttk, c-rescale]
         notes: >
@@ -306,8 +306,8 @@ nvt_equilibration:
       gen-vel:
         type: enum
         required: true
-        allowed_values: [yes]
-        forbidden_values: [no]
+        allowed_values: ["yes"]
+        forbidden_values: ["no"]
         notes: >
           MUST be 'yes' for NVT — velocities must be generated from
           Maxwell-Boltzmann distribution at ref-t. This is the first

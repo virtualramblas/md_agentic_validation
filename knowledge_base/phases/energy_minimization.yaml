@@ -196,7 +196,7 @@ energy_minimization:
       DispCorr:
         type: enum
         required: false
-        allowed_values: [no, EnerPres, Ener]
+        allowed_values: ["no", EnerPres, Ener]
         recommended: EnerPres
         notes: >
           Long-range dispersion correction for energy and pressure.
@@ -208,7 +208,7 @@ energy_minimization:
       tcoupl:
         type: enum
         required: true
-        allowed_values: [no]
+        allowed_values: ["no"]
         forbidden_values: [berendsen, v-rescale,
                            nose-hoover, andersen]
         notes: >
@@ -232,8 +232,8 @@ energy_minimization:
       gen-vel:
         type: enum
         required: true
-        allowed_values: [no]
-        forbidden_values: [yes]
+        allowed_values: ["no"]
+        forbidden_values: ["yes"]
         notes: >
           MUST be 'no'. Velocities are irrelevant during minimization.
 
