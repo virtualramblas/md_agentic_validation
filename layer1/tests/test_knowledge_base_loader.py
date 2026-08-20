@@ -459,7 +459,7 @@ def _build_minimal_kb(base: Path) -> Path:
                 ),
                 "top_choices": [
                     {
-                        "force_field": "ff99sb-ildn",
+                        "force_field": "amber99sb-ildn",
                         "water": "TIP3P",
                         "ions": (
                             "Joung-Cheatham (TIP3P)"
@@ -1267,7 +1267,7 @@ class TestCompatibilityChecks:
     ) -> None:
         """
         ff99sb-ildn + TIP3P entry has RECOMMENDED
-        rating. Uses real KB key 'ff99sb-ildn'.
+        rating. Uses real KB key 'amber99sb-ildn'.
         """
         matrix = kb.get_compatibility_matrix()
         entries = matrix.protein_simulations[
@@ -1276,7 +1276,7 @@ class TestCompatibilityChecks:
         amber_entry = next(
             (
                 e for e in entries
-                if e.force_field == "ff99sb-ildn"
+                if e.force_field == "amber99sb-ildn"
             ),
             None,
         )
