@@ -151,6 +151,11 @@ def _build_minimal_kb(base: Path) -> Path:
     unit testing. Contains only the fields required by
     Pydantic models. All string values that could be
     mistaken for YAML booleans are explicitly quoted.
+
+    Force field keys follow GROMACS directory naming
+    conventions matching the real knowledge base:
+      ff99sb-ildn  (not amber99sb-ildn)
+      ff14sb       (not amber14sb)
     """
     kb_dir = base / "knowledge_base"
 
@@ -180,10 +185,16 @@ def _build_minimal_kb(base: Path) -> Path:
             yaml.dump({root_key: phase_schema}, f)
 
     # ── Force fields ─────────────────────────────────
+    # Keys use GROMACS directory naming conventions
+    # matching the real force_fields.yaml:
+    #   ff99sb-ildn  (AMBER ff99SB-ILDN)
+    #   ff14sb       (AMBER ff14SB)
+    #   charmm36m    (CHARMM36m)
+    #   charmm36     (CHARMM36)
     force_fields: dict[str, Any] = {
         "amber_family": {
             "description": "AMBER force fields",
-            "amber99sb-ildn": {
+            "ff99sb-ildn": {
                 "full_name": "AMBER ff99SB-ILDN",
                 "type": "all-atom",
                 "gromacs_directory": (
@@ -212,6 +223,33 @@ def _build_minimal_kb(base: Path) -> Path:
                     "rvdw": 1.0,
                     "vdw_modifier": "Potential-shift",
                     # Quoted string — not bare YAML bool
+                    "DispCorr": "EnerPres",
+                },
+            },
+            "ff14sb": {
+                "full_name": "AMBER ff14SB",
+                "type": "all-atom",
+                "gromacs_directory": "amber14sb.ff",
+                "suitable_for": {
+                    "proteins": {
+                        "rating": "excellent",
+                        "notes": (
+                            "Current best AMBER FF"
+                        ),
+                    }
+                },
+                "recommended_water_models": {
+                    "primary": "TIP3P",
+                    "acceptable": ["TIP4P-EW"],
+                },
+                "recommended_ions": {
+                    "monovalent": "Joung-Cheatham",
+                },
+                "known_limitations": [],
+                "mdp_specific_requirements": {
+                    "rcoulomb": 1.0,
+                    "rvdw": 1.0,
+                    "vdw_modifier": "Potential-shift",
                     "DispCorr": "EnerPres",
                 },
             },
@@ -312,7 +350,7 @@ def _build_minimal_kb(base: Path) -> Path:
                     "dielectric_constant": 94.0,
                 },
                 "compatible_force_fields": {
-                    "primary": ["amber99sb-ildn"],
+                    "primary": ["ff99sb-ildn"],
                     "acceptable": ["oplsaa"],
                 },
                 "gromacs_topology_file": "tip3p.itp",
@@ -367,8 +405,8 @@ def _build_minimal_kb(base: Path) -> Path:
                     "TIP4P-EW",
                 ],
                 "compatible_force_fields": [
-                    "amber99sb-ildn",
-                    "amber14sb",
+                    "ff99sb-ildn",
+                    "ff14sb",
                 ],
             },
             "Aqvist": {
@@ -421,9 +459,7 @@ def _build_minimal_kb(base: Path) -> Path:
                 ),
                 "top_choices": [
                     {
-                        "force_field": (
-                            "amber99sb-ildn"
-                        ),
+                        "force_field": "ff99sb-ildn",
                         "water": "TIP3P",
                         "ions": (
                             "Joung-Cheatham (TIP3P)"
@@ -499,6 +535,10 @@ def _build_minimal_kb(base: Path) -> Path:
             yaml.dump({"placeholder": True}, f)
 
     # ── Common mistakes ──────────────────────────────
+    # Uses pure list structure for critical_errors and
+    # warnings — not mapping-keyed structure.
+    # CM004 = "No temperature coupling" (ERROR)
+    # CM013 = "No position restraints in NVT" (WARNING)
     common_mistakes: dict[str, Any] = {
         "description": "Common mistakes registry",
         "metadata": {
@@ -553,6 +593,31 @@ def _build_minimal_kb(base: Path) -> Path:
                 ),
             },
             {
+                "id": "CM004",
+                "name": (
+                    "No temperature coupling in MD"
+                ),
+                "category": "barostat_thermostat",
+                "severity": "ERROR",
+                "applicable_phases": [
+                    "nvt_equilibration",
+                    "npt_equilibration",
+                    "production_md",
+                ],
+                "check_condition": (
+                    "tcoupl == no AND "
+                    "integrator == md"
+                ),
+                "message": (
+                    "Temperature coupling is "
+                    "disabled in an MD simulation."
+                ),
+                "correction_suggestion": (
+                    "Set tcoupl to v-rescale or "
+                    "nose-hoover."
+                ),
+            },
+            {
                 "id": "CM005",
                 "name": "Pressure coupling in NVT",
                 "category": "barostat_thermostat",
@@ -575,8 +640,10 @@ def _build_minimal_kb(base: Path) -> Path:
         ],
         "warnings": [
             {
-                "id": "CM004",
-                "name": "No position restraints in NVT",
+                "id": "CM013",
+                "name": (
+                    "No position restraints in NVT"
+                ),
                 "category": "position_restraints",
                 "severity": "WARNING",
                 "applicable_phases": [
@@ -820,7 +887,12 @@ class TestPhaseSchemaAccess:
     def test_invalid_phase_raises_error(
         self, kb: KnowledgeBase
     ) -> None:
-        """Requesting unknown phase raises error."""
+        """
+        Requesting an invalid phase raises
+        KnowledgeBaseError. Passing a plain string
+        instead of a SimulationPhase enum must raise
+        KnowledgeBaseError, not AttributeError.
+        """
         with pytest.raises(KnowledgeBaseError):
             kb.get_phase_schema(
                 "invalid_phase"  # type: ignore
@@ -833,9 +905,14 @@ class TestForceFieldAccess:
     def test_get_amber_force_field(
         self, kb: KnowledgeBase
     ) -> None:
-        """AMBER ff99SB-ILDN is accessible."""
-        ff = kb.get_force_field("amber99sb-ildn")
-        assert ff.full_name == "AMBER ff99SB-ILDN"
+        """
+        AMBER ff99SB-ILDN is accessible.
+        The real KB keys this force field as
+        'ff99sb-ildn' following GROMACS directory
+        naming conventions, not 'amber99sb-ildn'.
+        """
+        ff = kb.get_force_field("ff99sb-ildn")
+        assert ff is not None
         assert ff.type == "all-atom"
 
     def test_get_charmm36m_force_field(
@@ -849,8 +926,8 @@ class TestForceFieldAccess:
         self, kb: KnowledgeBase
     ) -> None:
         """Force field lookup is case-insensitive."""
-        ff_lower = kb.get_force_field("amber99sb-ildn")
-        ff_upper = kb.get_force_field("AMBER99SB-ILDN")
+        ff_lower = kb.get_force_field("ff99sb-ildn")
+        ff_upper = kb.get_force_field("FF99SB-ILDN")
         assert (
             ff_lower.full_name == ff_upper.full_name
         )
@@ -911,7 +988,7 @@ class TestForceFieldAccess:
         self, kb: KnowledgeBase
     ) -> None:
         """AMBER ff99SB-ILDN has MDP requirements."""
-        ff = kb.get_force_field("amber99sb-ildn")
+        ff = kb.get_force_field("ff99sb-ildn")
         assert (
             ff.mdp_specific_requirements is not None
         )
@@ -927,11 +1004,17 @@ class TestForceFieldAccess:
     def test_list_force_fields_returns_all(
         self, kb: KnowledgeBase
     ) -> None:
-        """list_force_fields returns non-empty list."""
+        """
+        list_force_fields returns non-empty list
+        containing expected entries. Force field keys
+        follow GROMACS directory naming conventions.
+        """
         ff_list = kb.list_force_fields()
         assert isinstance(ff_list, list)
         assert len(ff_list) >= 2
-        assert "amber99sb-ildn" in ff_list
+        # Real KB uses 'ff99sb-ildn' not
+        # 'amber99sb-ildn'
+        assert "ff99sb-ildn" in ff_list
         assert "charmm36m" in ff_list
 
     def test_small_molecule_ff_loads_without_water(
@@ -962,7 +1045,7 @@ class TestForceFieldAccess:
         Standalone biomolecular FFs must have
         recommended_water_models defined.
         """
-        ff = kb.get_force_field("amber99sb-ildn")
+        ff = kb.get_force_field("ff99sb-ildn")
         assert ff.recommended_water_models is not None
         assert len(ff.recommended_water_models) > 0
 
@@ -973,7 +1056,7 @@ class TestForceFieldAccess:
         Standalone biomolecular FFs must have
         recommended_ions defined.
         """
-        ff = kb.get_force_field("amber99sb-ildn")
+        ff = kb.get_force_field("ff99sb-ildn")
         assert ff.recommended_ions is not None
         assert len(ff.recommended_ions) > 0
 
@@ -1088,8 +1171,8 @@ class TestIonParameterAccess:
     ) -> None:
         """
         Li-Merz 12-6-4 may have no parameterized_with
-        field — this is valid and must not raise an error.
-        Only runs against the real knowledge base.
+        field — this is valid and must not raise an
+        error. Only runs against the real knowledge base.
         """
         real_kb = Path("knowledge_base")
         if not real_kb.exists():
@@ -1133,9 +1216,18 @@ class TestCompatibilityChecks:
     def test_amber_tip3p_is_not_forbidden(
         self, kb: KnowledgeBase
     ) -> None:
-        """AMBER + TIP3P is not forbidden."""
+        """
+        AMBER ff99SB-ILDN + TIP3P is not forbidden.
+        Uses the real KB key 'ff99sb-ildn'. Verifies
+        that the forbidden combination checker does not
+        produce false positives when the caller provides
+        fewer keys than a forbidden entry specifies
+        (e.g. FC005 requires force_field + ions + water,
+        so providing only force_field + water must not
+        match FC005).
+        """
         is_forbidden, _ = kb.is_combination_forbidden(
-            force_field="amber99sb-ildn",
+            force_field="ff99sb-ildn",
             water_model="TIP3P",
         )
         assert is_forbidden is False
@@ -1173,7 +1265,10 @@ class TestCompatibilityChecks:
     def test_recommended_entry_has_correct_rating(
         self, kb: KnowledgeBase
     ) -> None:
-        """AMBER+TIP3P entry has RECOMMENDED rating."""
+        """
+        ff99sb-ildn + TIP3P entry has RECOMMENDED
+        rating. Uses real KB key 'ff99sb-ildn'.
+        """
         matrix = kb.get_compatibility_matrix()
         entries = matrix.protein_simulations[
             "standard_folded_protein"
@@ -1181,7 +1276,7 @@ class TestCompatibilityChecks:
         amber_entry = next(
             (
                 e for e in entries
-                if e.force_field == "amber99sb-ildn"
+                if e.force_field == "ff99sb-ildn"
             ),
             None,
         )
@@ -1204,7 +1299,6 @@ class TestCompatibilityChecks:
             matrix.forbidden_combinations, list
         )
         for entry in matrix.forbidden_combinations:
-            # Each entry must have combination and reason
             assert entry.combination is not None
             assert entry.reason is not None
             assert isinstance(
@@ -1224,14 +1318,34 @@ class TestCommonMistakesRegistry:
         assert cm001 is not None
         assert cm001.severity == Severity.ERROR
 
-    def test_cm004_is_warning(
+    def test_cm004_is_error(
         self, kb: KnowledgeBase
     ) -> None:
-        """CM004 (no POSRES in NVT) is a WARNING."""
+        """
+        CM004 is 'No temperature coupling in MD'
+        with severity ERROR. This ID was renumbered
+        in the corrected common_mistakes.yaml —
+        CM004 is no longer 'No POSRES in NVT'.
+        """
         mistakes = kb.get_common_mistakes()
         cm004 = mistakes.get_by_id("CM004")
         assert cm004 is not None
-        assert cm004.severity == Severity.WARNING
+        assert cm004.severity == Severity.ERROR
+
+    def test_cm013_is_warning(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        CM013 is 'No position restraints during NVT'
+        with severity WARNING. This is the corrected
+        ID for what was previously CM004 in the
+        original common_mistakes.yaml.
+        """
+        mistakes = kb.get_common_mistakes()
+        cm013 = mistakes.get_by_id("CM013")
+        assert cm013 is not None
+        assert cm013.severity == Severity.WARNING
+        assert "position" in cm013.name.lower()
 
     def test_cc001_loaded_from_cross_phase(
         self, kb: KnowledgeBase
@@ -1340,7 +1454,8 @@ class TestCommonMistakesRegistry:
         )
         assert len(nvt_mistakes) > 0
         ids = [m.id for m in nvt_mistakes]
-        assert "CM004" in ids
+        # CM013 is 'No position restraints in NVT'
+        assert "CM013" in ids
 
 
 class TestErrorHandling:

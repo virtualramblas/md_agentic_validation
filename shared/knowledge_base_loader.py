@@ -45,7 +45,7 @@ class KnowledgeBase:
         schema = kb.get_phase_schema(
             SimulationPhase.ENERGY_MINIMIZATION
         )
-        ff = kb.get_force_field("amber99sb-ildn")
+        ff = kb.get_force_field("ff99sb-ildn")
         mistakes = kb.get_common_mistakes()
 
     Or via the singleton factory:
@@ -98,8 +98,17 @@ class KnowledgeBase:
             phase: One of the SimulationPhase enum values.
 
         Raises:
-            KnowledgeBaseError: If the phase is not found.
+            KnowledgeBaseError: If phase is not a
+                SimulationPhase enum value, or if the
+                phase is not found in the loaded data.
         """
+        if not isinstance(phase, SimulationPhase):
+            raise KnowledgeBaseError(
+                f"Invalid phase: {phase!r}. "
+                f"Must be a SimulationPhase enum value. "
+                f"Available: "
+                f"{[p.value for p in SimulationPhase]}"
+            )
         if phase not in self._phases:
             raise KnowledgeBaseError(
                 f"No schema found for phase: "
@@ -114,9 +123,17 @@ class KnowledgeBase:
         Return the force field definition by name.
         Lookup is case-insensitive.
 
+        Note: Force field names match the keys used in
+        force_fields.yaml, which follow GROMACS directory
+        naming conventions. For example:
+          'ff99sb-ildn'  (not 'amber99sb-ildn')
+          'ff14sb'       (not 'amber14sb')
+          'ff99sb'       (not 'amber99sb')
+
         Args:
-            ff_name: Force field name, e.g.
-                     'amber99sb-ildn', 'charmm36m'.
+            ff_name: Force field name as keyed in
+                     force_fields.yaml, e.g.
+                     'ff99sb-ildn', 'charmm36m'.
 
         Raises:
             KnowledgeBaseError: If the force field is
@@ -219,20 +236,45 @@ class KnowledgeBase:
         forbidden by the compatibility matrix.
 
         A combination matches a forbidden entry only if
-        ALL specified fields in the forbidden entry match
-        the provided arguments. Fields not present in the
-        forbidden entry are ignored.
+        ALL keys present in the forbidden entry's
+        combination dict are matched by the provided
+        arguments. If the forbidden entry specifies a
+        key that the caller did not provide, it is NOT
+        a match.
+
+        This prevents false positives. For example,
+        forbidden entry FC005 specifies:
+            {force_field: amber, ions: Aqvist, water: TIP3P}
+        A caller providing only {force_field, water_model}
+        without ions must NOT match FC005, because the
+        caller has not specified ions at all — the
+        combination may be valid with different ions.
 
         Args:
             force_field:  Force field name to check.
+                          Always required.
             water_model:  Water model name (optional).
-            disp_corr:    DispCorr value (optional).
-            vdw_modifier: VdW modifier value (optional).
+            disp_corr:    DispCorr MDP value (optional).
+            vdw_modifier: VdW modifier MDP value
+                          (optional).
 
         Returns:
             (is_forbidden, reason_message) tuple.
             reason_message is None if not forbidden.
         """
+        # Build a lookup dict of the caller's provided
+        # arguments keyed by the combo dict field names
+        # used in compatibility_matrix.yaml.
+        provided: dict[str, str] = {
+            "force_field": force_field,
+        }
+        if water_model is not None:
+            provided["water"] = water_model
+        if disp_corr is not None:
+            provided["DispCorr"] = disp_corr
+        if vdw_modifier is not None:
+            provided["vdw-modifier"] = vdw_modifier
+
         for forbidden in (
             self._compatibility_matrix
             .forbidden_combinations
@@ -240,33 +282,21 @@ class KnowledgeBase:
             combo = forbidden.combination
             match = True
 
-            if "force_field" in combo:
+            for combo_key, combo_value in combo.items():
+                if combo_key not in provided:
+                    # The forbidden entry requires a key
+                    # the caller did not provide — this
+                    # entry cannot match. A partial
+                    # specification by the caller must
+                    # not trigger a forbidden match.
+                    match = False
+                    break
                 if (
-                    combo["force_field"].lower()
-                    != force_field.lower()
+                    provided[combo_key].lower()
+                    != combo_value.lower()
                 ):
                     match = False
-
-            if water_model and "water" in combo:
-                if (
-                    combo["water"].lower()
-                    != water_model.lower()
-                ):
-                    match = False
-
-            if disp_corr and "DispCorr" in combo:
-                if (
-                    combo["DispCorr"].lower()
-                    != disp_corr.lower()
-                ):
-                    match = False
-
-            if vdw_modifier and "vdw-modifier" in combo:
-                if (
-                    combo["vdw-modifier"].lower()
-                    != vdw_modifier.lower()
-                ):
-                    match = False
+                    break
 
             if match:
                 return True, forbidden.reason
@@ -448,12 +478,20 @@ class KnowledgeBase:
         entries keyed by their short name. All families
         are flattened into a single dict.
 
+        Force field keys follow GROMACS directory naming
+        conventions as used in force_fields.yaml:
+          ff99sb-ildn  (AMBER ff99SB-ILDN)
+          ff14sb       (AMBER ff14SB)
+          ff99sb       (AMBER ff99SB)
+          charmm36m    (CHARMM36m)
+          charmm36     (CHARMM36)
+
         File structure:
             amber_family:           ← family key
               description: ...      ← skipped
-              amber99sb-ildn:       ← FF entry
+              ff99sb-ildn:          ← FF entry
                 full_name: ...
-              amber14sb:            ← FF entry
+              ff14sb:               ← FF entry
                 full_name: ...
             charmm_family:          ← family key
               charmm36m:            ← FF entry
@@ -758,13 +796,13 @@ class KnowledgeBase:
             a pure list or a mapping-keyed structure.
 
             Pure list:
-                [{"id": "CM001", ...}, {"id": "CM002"}]
+                [{"id": "CM001", ...}, ...]
                 → returned as-is (non-dict items dropped)
 
             Mapping keyed by ID:
                 {"description": "...", "CM001": {...}}
-                → values extracted, non-dict items
-                  (e.g. the description string) dropped
+                → values extracted, non-dict entries
+                  (e.g. description strings) dropped
 
             Args:
                 raw_section: The raw value of
@@ -776,16 +814,16 @@ class KnowledgeBase:
                 validation.
             """
             if isinstance(raw_section, list):
-                # Correct structure — pure list
-                # Drop any non-dict items defensively
+                # Correct structure — pure list.
+                # Drop any non-dict items defensively.
                 return [
                     item for item in raw_section
                     if isinstance(item, dict)
                 ]
             if isinstance(raw_section, dict):
-                # Legacy structure — mapping keyed by ID
+                # Legacy structure — mapping keyed by ID.
                 # Extract values, skip non-dict entries
-                # such as description strings
+                # such as description strings.
                 return [
                     v for v in raw_section.values()
                     if isinstance(v, dict)
