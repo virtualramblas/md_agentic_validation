@@ -34,20 +34,33 @@ def _minimal_mdp_section(
     """
     Build a minimal MDP section dict with one parameter.
     Used to construct minimal phase schemas for testing.
+
+    Note: allowed_values must use explicit Python strings
+    "no" and "yes" — never bare Python booleans False/True
+    — because yaml.dump will serialise booleans as YAML
+    boolean tokens which safe_load then parses back as
+    booleans, triggering the exact problem the coercion
+    validators are designed to handle.
     """
     if param_type == "enum":
-        param = {
+        param: dict[str, Any] = {
             "type": "enum",
             "required": True,
-            "allowed_values": allowed_values or ["steep"],
+            "allowed_values": (
+                allowed_values or ["steep"]
+            ),
             "notes": "Test parameter",
         }
     else:
         param = {
             "type": param_type,
             "required": True,
-            "min": min_val if min_val is not None else 1,
-            "max": max_val if max_val is not None else 100,
+            "min": (
+                min_val if min_val is not None else 1
+            ),
+            "max": (
+                max_val if max_val is not None else 100
+            ),
             "notes": "Test parameter",
         }
     return {"parameters": {param_name: param}}
@@ -57,6 +70,11 @@ def _build_minimal_phase_schema() -> dict[str, Any]:
     """
     Build a minimal but valid phase schema dict that
     satisfies all required PhaseSchema fields.
+
+    All enum allowed_values that contain 'no' or 'yes'
+    are expressed as explicit Python strings so that
+    yaml.dump writes them as quoted YAML strings rather
+    than bare boolean tokens.
     """
     return {
         "description": "Minimal test phase schema",
@@ -64,7 +82,10 @@ def _build_minimal_phase_schema() -> dict[str, Any]:
             "integrator", "enum", ["steep", "md"]
         ),
         "output_control": _minimal_mdp_section(
-            "nstlog", "integer", min_val=1, max_val=1000
+            "nstlog",
+            "integer",
+            min_val=1,
+            max_val=1000,
         ),
         "neighbor_searching": _minimal_mdp_section(
             "cutoff-scheme", "enum", ["Verlet"]
@@ -73,19 +94,53 @@ def _build_minimal_phase_schema() -> dict[str, Any]:
             "coulombtype", "enum", ["PME"]
         ),
         "vdw": _minimal_mdp_section(
-            "rvdw", "float", min_val=0.8, max_val=1.4
+            "rvdw",
+            "float",
+            min_val=0.8,
+            max_val=1.4,
         ),
-        "temperature_coupling": _minimal_mdp_section(
-            "tcoupl", "enum", ["no", "v-rescale"]
-        ),
-        "pressure_coupling": _minimal_mdp_section(
-            "pcoupl", "enum", ["no", "berendsen"]
-        ),
-        "velocity_generation": _minimal_mdp_section(
-            "gen-vel", "enum", ["no", "yes"]
-        ),
+        "temperature_coupling": {
+            "parameters": {
+                "tcoupl": {
+                    "type": "enum",
+                    "required": True,
+                    # Explicit strings — not bare
+                    # Python booleans
+                    "allowed_values": [
+                        "no",
+                        "v-rescale",
+                    ],
+                    "notes": "Thermostat setting",
+                }
+            }
+        },
+        "pressure_coupling": {
+            "parameters": {
+                "pcoupl": {
+                    "type": "enum",
+                    "required": True,
+                    "allowed_values": [
+                        "no",
+                        "berendsen",
+                    ],
+                    "notes": "Barostat setting",
+                }
+            }
+        },
+        "velocity_generation": {
+            "parameters": {
+                "gen-vel": {
+                    "type": "enum",
+                    "required": True,
+                    "allowed_values": ["no", "yes"],
+                    "notes": "Velocity generation",
+                }
+            }
+        },
         "constraints": _minimal_mdp_section(
-            "constraints", "enum", ["none", "h-bonds"]
+            "constraints",
+            "enum",
+            ["none", "h-bonds"],
         ),
     }
 
@@ -94,7 +149,8 @@ def _build_minimal_kb(base: Path) -> Path:
     """
     Build a minimal valid knowledge base directory for
     unit testing. Contains only the fields required by
-    Pydantic models.
+    Pydantic models. All string values that could be
+    mistaken for YAML booleans are explicitly quoted.
     """
     kb_dir = base / "knowledge_base"
 
@@ -103,12 +159,16 @@ def _build_minimal_kb(base: Path) -> Path:
     (kb_dir / "forcefield_compatibility").mkdir(
         parents=True
     )
-    (kb_dir / "box_solvation_rules").mkdir(parents=True)
+    (kb_dir / "box_solvation_rules").mkdir(
+        parents=True
+    )
 
-    # ── Phase files ──────────────────────────────────────
+    # ── Phase files ──────────────────────────────────
     phase_schema = _build_minimal_phase_schema()
     phase_file_map = {
-        "energy_minimization.yaml": "energy_minimization",
+        "energy_minimization.yaml": (
+            "energy_minimization"
+        ),
         "nvt_equilibration.yaml": "nvt_equilibration",
         "npt_equilibration.yaml": "npt_equilibration",
         "production_md.yaml": "production_md",
@@ -119,18 +179,22 @@ def _build_minimal_kb(base: Path) -> Path:
         ) as f:
             yaml.dump({root_key: phase_schema}, f)
 
-    # ── Force fields ─────────────────────────────────────
+    # ── Force fields ─────────────────────────────────
     force_fields: dict[str, Any] = {
         "amber_family": {
             "description": "AMBER force fields",
             "amber99sb-ildn": {
                 "full_name": "AMBER ff99SB-ILDN",
                 "type": "all-atom",
-                "gromacs_directory": "amber99sb-ildn.ff",
+                "gromacs_directory": (
+                    "amber99sb-ildn.ff"
+                ),
                 "suitable_for": {
                     "proteins": {
                         "rating": "very_good",
-                        "notes": "Good for folded proteins",
+                        "notes": (
+                            "Good for folded proteins"
+                        ),
                     }
                 },
                 "recommended_water_models": {
@@ -147,6 +211,7 @@ def _build_minimal_kb(base: Path) -> Path:
                     "rcoulomb": 1.0,
                     "rvdw": 1.0,
                     "vdw_modifier": "Potential-shift",
+                    # Quoted string — not bare YAML bool
                     "DispCorr": "EnerPres",
                 },
             },
@@ -160,7 +225,10 @@ def _build_minimal_kb(base: Path) -> Path:
                 "suitable_for": {
                     "proteins": {
                         "rating": "excellent",
-                        "notes": "Excellent for folded and IDPs",
+                        "notes": (
+                            "Excellent for folded "
+                            "and IDPs"
+                        ),
                     }
                 },
                 "recommended_water_models": {
@@ -177,6 +245,7 @@ def _build_minimal_kb(base: Path) -> Path:
                     "rvdw": 1.2,
                     "vdw_modifier": "Force-switch",
                     "rvdw_switch": 1.0,
+                    # Quoted string — not bare YAML bool
                     "DispCorr": "no",
                     "critical_note": (
                         "CHARMM36 requires different "
@@ -191,7 +260,9 @@ def _build_minimal_kb(base: Path) -> Path:
                 "suitable_for": {
                     "proteins": {
                         "rating": "very_good",
-                        "notes": "Good for folded proteins",
+                        "notes": (
+                            "Good for folded proteins"
+                        ),
                     }
                 },
                 "recommended_water_models": {
@@ -220,13 +291,14 @@ def _build_minimal_kb(base: Path) -> Path:
         },
     }
     with open(
-        kb_dir / "forcefield_compatibility"
+        kb_dir
+        / "forcefield_compatibility"
         / "force_fields.yaml",
         "w",
     ) as f:
         yaml.dump(force_fields, f)
 
-    # ── Water models ─────────────────────────────────────
+    # ── Water models ─────────────────────────────────
     water_models: dict[str, Any] = {
         "three_site_models": {
             "description": "Three-site water models",
@@ -234,7 +306,9 @@ def _build_minimal_kb(base: Path) -> Path:
                 "sites": 3,
                 "properties": {
                     "density_gcm3": 0.982,
-                    "diffusion_coefficient_m2s": 5.19e-9,
+                    "diffusion_coefficient_m2s": (
+                        5.19e-9
+                    ),
                     "dielectric_constant": 94.0,
                 },
                 "compatible_force_fields": {
@@ -246,9 +320,14 @@ def _build_minimal_kb(base: Path) -> Path:
             },
             "TIP3P-CHARMM": {
                 "sites": 3,
-                "description": "CHARMM-modified TIP3P",
+                "description": (
+                    "CHARMM-modified TIP3P"
+                ),
                 "compatible_force_fields": {
-                    "primary": ["charmm36", "charmm36m"],
+                    "primary": [
+                        "charmm36",
+                        "charmm36m",
+                    ],
                 },
                 "gromacs_topology_file": (
                     "tip3p_charmm.itp"
@@ -263,64 +342,110 @@ def _build_minimal_kb(base: Path) -> Path:
         },
     }
     with open(
-        kb_dir / "forcefield_compatibility"
+        kb_dir
+        / "forcefield_compatibility"
         / "water_models.yaml",
         "w",
     ) as f:
         yaml.dump(water_models, f)
 
-    # ── Ion parameters ───────────────────────────────────
+    # ── Ion parameters ───────────────────────────────
     ion_parameters: dict[str, Any] = {
         "description": "Ion parameter sets",
-        "Joung-Cheatham": {
-            "reference": "Joung & Cheatham, JPCA 2008",
-            "ions_covered": ["Na+", "K+", "Cl-"],
-            "parameterized_with": ["TIP3P", "TIP4P-EW"],
-            "compatible_water_models": [
-                "TIP3P", "TIP4P-EW"
-            ],
-            "compatible_force_fields": [
-                "amber99sb-ildn", "amber14sb"
-            ],
-        },
-        "Aqvist": {
-            "reference": "Aqvist, J Phys Chem 1990",
-            "ions_covered": ["Na+", "K+", "Mg2+"],
-            "parameterized_with": "SPC",
-            "compatible_water_models": ["SPC", "SPCE"],
-            "compatible_force_fields": [
-                "gromos53a6", "gromos54a7"
-            ],
-            "not_recommended_with": ["TIP3P", "TIP4P"],
+        "parameter_sets": {
+            "Joung-Cheatham": {
+                "reference": (
+                    "Joung & Cheatham, JPCA 2008"
+                ),
+                "ions_covered": ["Na+", "K+", "Cl-"],
+                "parameterized_with": [
+                    "TIP3P",
+                    "TIP4P-EW",
+                ],
+                "compatible_water_models": [
+                    "TIP3P",
+                    "TIP4P-EW",
+                ],
+                "compatible_force_fields": [
+                    "amber99sb-ildn",
+                    "amber14sb",
+                ],
+            },
+            "Aqvist": {
+                "reference": (
+                    "Aqvist, J Phys Chem 1990"
+                ),
+                "ions_covered": [
+                    "Na+",
+                    "K+",
+                    "Mg2+",
+                ],
+                "parameterized_with": "SPC",
+                "compatible_water_models": [
+                    "SPC",
+                    "SPCE",
+                ],
+                "compatible_force_fields": [
+                    "gromos53a6",
+                    "gromos54a7",
+                ],
+                "not_recommended_with": [
+                    "TIP3P",
+                    "TIP4P",
+                ],
+            },
         },
     }
     with open(
-        kb_dir / "forcefield_compatibility"
+        kb_dir
+        / "forcefield_compatibility"
         / "ion_parameters.yaml",
         "w",
     ) as f:
         yaml.dump(ion_parameters, f)
 
-    # ── Compatibility matrix ─────────────────────────────
+    # ── Compatibility matrix ─────────────────────────
+    # protein_simulations values use the
+    # SystemTypeCompatibility structure:
+    #   description: ...
+    #   top_choices:
+    #     - force_field: ...
+    #       rating: ...
     compatibility_matrix: dict[str, Any] = {
         "description": "Compatibility matrix",
         "protein_simulations": {
-            "standard_folded_protein": [
-                {
-                    "force_field": "amber99sb-ildn",
-                    "water": "TIP3P",
-                    "ions": "Joung-Cheatham (TIP3P)",
-                    "rating": "RECOMMENDED",
-                    "notes": "Most widely used combination",
-                },
-                {
-                    "force_field": "charmm36m",
-                    "water": "TIP3P-CHARMM",
-                    "ions": "CHARMM36 ions",
-                    "rating": "RECOMMENDED",
-                    "notes": "Excellent for folded proteins",
-                },
-            ]
+            "standard_folded_protein": {
+                "description": (
+                    "Globular folded protein "
+                    "in explicit solvent"
+                ),
+                "top_choices": [
+                    {
+                        "force_field": (
+                            "amber99sb-ildn"
+                        ),
+                        "water": "TIP3P",
+                        "ions": (
+                            "Joung-Cheatham (TIP3P)"
+                        ),
+                        "rating": "RECOMMENDED",
+                        "notes": (
+                            "Most widely used "
+                            "combination"
+                        ),
+                    },
+                    {
+                        "force_field": "charmm36m",
+                        "water": "TIP3P-CHARMM",
+                        "ions": "CHARMM36 ions",
+                        "rating": "RECOMMENDED",
+                        "notes": (
+                            "Excellent for folded "
+                            "proteins"
+                        ),
+                    },
+                ],
+            }
         },
         "forbidden_combinations": [
             {
@@ -343,20 +468,22 @@ def _build_minimal_kb(base: Path) -> Path:
                 },
                 "reason": (
                     "CHARMM36 uses force-switch; "
-                    "DispCorr double-counts long-range VdW"
+                    "DispCorr double-counts "
+                    "long-range VdW"
                 ),
                 "severity": "ERROR",
             },
         ],
     }
     with open(
-        kb_dir / "forcefield_compatibility"
+        kb_dir
+        / "forcefield_compatibility"
         / "compatibility_matrix.yaml",
         "w",
     ) as f:
         yaml.dump(compatibility_matrix, f)
 
-    # ── Box/solvation placeholder files ─────────────────
+    # ── Box/solvation placeholder files ─────────────
     for solvation_file in [
         "box_geometry.yaml",
         "solvation.yaml",
@@ -364,13 +491,14 @@ def _build_minimal_kb(base: Path) -> Path:
         "validation_checks.yaml",
     ]:
         with open(
-            kb_dir / "box_solvation_rules"
+            kb_dir
+            / "box_solvation_rules"
             / solvation_file,
             "w",
         ) as f:
             yaml.dump({"placeholder": True}, f)
 
-    # ── Common mistakes ──────────────────────────────────
+    # ── Common mistakes ──────────────────────────────
     common_mistakes: dict[str, Any] = {
         "description": "Common mistakes registry",
         "metadata": {
@@ -379,21 +507,26 @@ def _build_minimal_kb(base: Path) -> Path:
         "critical_errors": [
             {
                 "id": "CM001",
-                "name": "Berendsen barostat in production",
+                "name": (
+                    "Berendsen barostat in production"
+                ),
                 "category": "barostat_thermostat",
                 "severity": "ERROR",
-                "applicable_phases": ["production_md"],
+                "applicable_phases": [
+                    "production_md"
+                ],
                 "check_condition": (
                     "pcoupl == berendsen AND "
                     "phase == production_md"
                 ),
                 "message": (
-                    "Berendsen barostat does not sample "
-                    "correct NPT ensemble. Use "
-                    "Parrinello-Rahman."
+                    "Berendsen barostat does not "
+                    "sample correct NPT ensemble. "
+                    "Use Parrinello-Rahman."
                 ),
                 "correction_suggestion": (
-                    "Change pcoupl to parrinello-rahman."
+                    "Change pcoupl to "
+                    "parrinello-rahman."
                 ),
             },
             {
@@ -403,14 +536,16 @@ def _build_minimal_kb(base: Path) -> Path:
                 ),
                 "category": "position_restraints",
                 "severity": "ERROR",
-                "applicable_phases": ["production_md"],
+                "applicable_phases": [
+                    "production_md"
+                ],
                 "check_condition": (
                     "define contains POSRES AND "
                     "phase == production_md"
                 ),
                 "message": (
-                    "Position restraints must be removed "
-                    "for production MD."
+                    "Position restraints must be "
+                    "removed for production MD."
                 ),
                 "correction_suggestion": (
                     "Remove define = -DPOSRES from "
@@ -430,8 +565,8 @@ def _build_minimal_kb(base: Path) -> Path:
                     "phase == nvt_equilibration"
                 ),
                 "message": (
-                    "Pressure coupling must be disabled "
-                    "during NVT equilibration."
+                    "Pressure coupling must be "
+                    "disabled during NVT equilibration."
                 ),
                 "correction_suggestion": (
                     "Set pcoupl = no in NVT MDP file."
@@ -448,15 +583,17 @@ def _build_minimal_kb(base: Path) -> Path:
                     "nvt_equilibration"
                 ],
                 "check_condition": (
-                    "define does not contain POSRES AND "
-                    "phase == nvt_equilibration"
+                    "define does not contain POSRES "
+                    "AND phase == nvt_equilibration"
                 ),
                 "message": (
                     "Position restraints strongly "
-                    "recommended during NVT equilibration."
+                    "recommended during NVT "
+                    "equilibration."
                 ),
                 "correction_suggestion": (
-                    "Add define = -DPOSRES to NVT MDP."
+                    "Add define = -DPOSRES to "
+                    "NVT MDP."
                 ),
             },
         ],
@@ -474,8 +611,9 @@ def _build_minimal_kb(base: Path) -> Path:
                     "ref-t(NPT) != ref-t(Production)"
                 ),
                 "message": (
-                    "Target temperature is inconsistent "
-                    "across simulation phases."
+                    "Target temperature is "
+                    "inconsistent across simulation "
+                    "phases."
                 ),
                 "correction_suggestion": (
                     "Set ref-t consistently in all "
@@ -484,7 +622,9 @@ def _build_minimal_kb(base: Path) -> Path:
             },
         },
     }
-    with open(kb_dir / "common_mistakes.yaml", "w") as f:
+    with open(
+        kb_dir / "common_mistakes.yaml", "w"
+    ) as f:
         yaml.dump(common_mistakes, f)
 
     return kb_dir
@@ -497,9 +637,12 @@ def _build_minimal_kb(base: Path) -> Path:
 @pytest.fixture
 def kb_dir(tmp_path: Path) -> Path:
     """
-    Create a minimal but valid knowledge base directory
-    structure for testing. Uses the real knowledge base
-    if available, otherwise builds a minimal one.
+    Provide a knowledge base directory for testing.
+
+    Uses the real knowledge base if it exists at the
+    default location, otherwise builds a minimal one.
+    The real KB is copied to a temp directory so tests
+    cannot modify it.
     """
     real_kb = Path("knowledge_base")
     if real_kb.exists():
@@ -557,7 +700,9 @@ class TestKnowledgeBaseLoading:
         """Compatibility matrix is loaded."""
         matrix = kb.get_compatibility_matrix()
         assert matrix is not None
-        assert len(matrix.forbidden_combinations) > 0
+        assert (
+            len(matrix.forbidden_combinations) > 0
+        )
 
     def test_common_mistakes_loaded(
         self, kb: KnowledgeBase
@@ -603,9 +748,9 @@ class TestPhaseSchemaAccess:
         for phase in SimulationPhase:
             schema = kb.get_phase_schema(phase)
             assert schema.run_control is not None
-            assert len(
-                schema.run_control.parameters
-            ) > 0
+            assert (
+                len(schema.run_control.parameters) > 0
+            )
 
     def test_all_four_phases_have_constraints(
         self, kb: KnowledgeBase
@@ -615,12 +760,71 @@ class TestPhaseSchemaAccess:
             schema = kb.get_phase_schema(phase)
             assert schema.constraints is not None
 
+    def test_allowed_values_are_strings_not_bools(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Verify that YAML boolean coercion worked
+        correctly. Parameters with allowed_values
+        containing 'no' or 'yes' must have string
+        values, not Python booleans.
+        """
+        for phase in SimulationPhase:
+            schema = kb.get_phase_schema(phase)
+            for section_name in (
+                "temperature_coupling",
+                "pressure_coupling",
+                "velocity_generation",
+            ):
+                section = getattr(
+                    schema, section_name, None
+                )
+                if section is None:
+                    continue
+                for param_name, param in (
+                    section.parameters.items()
+                ):
+                    if param.allowed_values:
+                        for val in param.allowed_values:
+                            assert isinstance(
+                                val, str
+                            ), (
+                                f"Phase {phase.value} "
+                                f"section "
+                                f"{section_name} "
+                                f"param {param_name} "
+                                f"allowed_values "
+                                f"contains non-string: "
+                                f"{val!r} "
+                                f"(type: "
+                                f"{type(val).__name__})"
+                            )
+                    if param.forbidden_values:
+                        for val in (
+                            param.forbidden_values
+                        ):
+                            assert isinstance(
+                                val, str
+                            ), (
+                                f"Phase {phase.value} "
+                                f"section "
+                                f"{section_name} "
+                                f"param {param_name} "
+                                f"forbidden_values "
+                                f"contains non-string: "
+                                f"{val!r} "
+                                f"(type: "
+                                f"{type(val).__name__})"
+                            )
+
     def test_invalid_phase_raises_error(
         self, kb: KnowledgeBase
     ) -> None:
         """Requesting unknown phase raises error."""
         with pytest.raises(KnowledgeBaseError):
-            kb.get_phase_schema("invalid_phase")  # type: ignore
+            kb.get_phase_schema(
+                "invalid_phase"  # type: ignore
+            )
 
 
 class TestForceFieldAccess:
@@ -647,7 +851,9 @@ class TestForceFieldAccess:
         """Force field lookup is case-insensitive."""
         ff_lower = kb.get_force_field("amber99sb-ildn")
         ff_upper = kb.get_force_field("AMBER99SB-ILDN")
-        assert ff_lower.full_name == ff_upper.full_name
+        assert (
+            ff_lower.full_name == ff_upper.full_name
+        )
 
     def test_unknown_force_field_raises_error(
         self, kb: KnowledgeBase
@@ -664,13 +870,41 @@ class TestForceFieldAccess:
     ) -> None:
         """CHARMM36m has force-field-specific MDP reqs."""
         ff = kb.get_force_field("charmm36m")
-        assert ff.mdp_specific_requirements is not None
         assert (
-            ff.mdp_specific_requirements.rcoulomb == 1.2
+            ff.mdp_specific_requirements is not None
+        )
+        assert (
+            ff.mdp_specific_requirements.rcoulomb
+            == 1.2
         )
         assert (
             ff.mdp_specific_requirements.vdw_modifier
             == "Force-switch"
+        )
+
+    def test_charmm36m_dispcorr_is_string_no(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        CHARMM36m DispCorr must be the string "no",
+        not the Python boolean False. Verifies that
+        YAML boolean coercion worked for force field
+        MDP requirements.
+        """
+        ff = kb.get_force_field("charmm36m")
+        assert (
+            ff.mdp_specific_requirements is not None
+        )
+        disp_corr = (
+            ff.mdp_specific_requirements.DispCorr
+        )
+        assert disp_corr == "no", (
+            f"Expected string 'no', got {disp_corr!r} "
+            f"(type: {type(disp_corr).__name__})"
+        )
+        assert isinstance(disp_corr, str), (
+            f"DispCorr must be a string, "
+            f"got {type(disp_corr).__name__}"
         )
 
     def test_amber_has_mdp_requirements(
@@ -678,9 +912,12 @@ class TestForceFieldAccess:
     ) -> None:
         """AMBER ff99SB-ILDN has MDP requirements."""
         ff = kb.get_force_field("amber99sb-ildn")
-        assert ff.mdp_specific_requirements is not None
         assert (
-            ff.mdp_specific_requirements.rcoulomb == 1.0
+            ff.mdp_specific_requirements is not None
+        )
+        assert (
+            ff.mdp_specific_requirements.rcoulomb
+            == 1.0
         )
         assert (
             ff.mdp_specific_requirements.vdw_modifier
@@ -696,6 +933,49 @@ class TestForceFieldAccess:
         assert len(ff_list) >= 2
         assert "amber99sb-ildn" in ff_list
         assert "charmm36m" in ff_list
+
+    def test_small_molecule_ff_loads_without_water(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Small molecule FFs (GAFF, GAFF2, CGenFF) do not
+        require recommended_water_models or
+        recommended_ions and should load without errors.
+        Only runs against the real knowledge base.
+        """
+        real_kb = Path("knowledge_base")
+        if not real_kb.exists():
+            pytest.skip(
+                "Real knowledge base not available"
+            )
+        for ff_name in ["gaff", "gaff2", "cgenff"]:
+            ff = kb.get_force_field(ff_name)
+            assert ff is not None
+            assert (
+                "small molecule" in ff.type.lower()
+            )
+
+    def test_standalone_ff_has_water_model(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Standalone biomolecular FFs must have
+        recommended_water_models defined.
+        """
+        ff = kb.get_force_field("amber99sb-ildn")
+        assert ff.recommended_water_models is not None
+        assert len(ff.recommended_water_models) > 0
+
+    def test_standalone_ff_has_ion_params(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Standalone biomolecular FFs must have
+        recommended_ions defined.
+        """
+        ff = kb.get_force_field("amber99sb-ildn")
+        assert ff.recommended_ions is not None
+        assert len(ff.recommended_ions) > 0
 
 
 class TestWaterModelAccess:
@@ -741,7 +1021,7 @@ class TestIonParameterAccess:
     def test_get_joung_cheatham(
         self, kb: KnowledgeBase
     ) -> None:
-        """Joung-Cheatham ion parameters are accessible."""
+        """Joung-Cheatham ion parameters accessible."""
         ions = kb.get_ion_parameters("joung-cheatham")
         assert "Na+" in ions.ions_covered
 
@@ -761,6 +1041,64 @@ class TestIonParameterAccess:
             match="Unknown ion parameter set",
         ):
             kb.get_ion_parameters("nonexistent_ions")
+
+    def test_ion_parameters_not_nested_under_key(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Ion parameters are stored as a flat name→schema
+        dict, not nested under 'parameter_sets' or any
+        other structural key. Verifies the loader
+        correctly unwraps the YAML structure.
+        """
+        ions = kb.get_ion_parameters("joung-cheatham")
+        assert ions is not None
+        assert ions.reference is not None
+        with pytest.raises(KnowledgeBaseError):
+            kb.get_ion_parameters("parameter_sets")
+
+    def test_all_ion_params_have_reference(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """Every ion parameter set has a reference."""
+        for name in kb.list_ion_parameter_sets():
+            ions = kb.get_ion_parameters(name)
+            assert ions.reference is not None, (
+                f"Ion parameter set '{name}' "
+                f"is missing a reference"
+            )
+
+    def test_all_ion_params_have_ions_covered(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """Every ion parameter set lists ions covered."""
+        for name in kb.list_ion_parameter_sets():
+            ions = kb.get_ion_parameters(name)
+            assert ions.ions_covered is not None, (
+                f"Ion parameter set '{name}' "
+                f"is missing ions_covered"
+            )
+            assert len(ions.ions_covered) > 0, (
+                f"Ion parameter set '{name}' "
+                f"has empty ions_covered list"
+            )
+
+    def test_li_merz_optional_parameterized_with(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Li-Merz 12-6-4 may have no parameterized_with
+        field — this is valid and must not raise an error.
+        Only runs against the real knowledge base.
+        """
+        real_kb = Path("knowledge_base")
+        if not real_kb.exists():
+            pytest.skip(
+                "Real knowledge base not available"
+            )
+        ions = kb.get_ion_parameters("li-merz_12-6-4")
+        assert ions is not None
+        assert ions.reference is not None
 
 
 class TestCompatibilityChecks:
@@ -795,7 +1133,7 @@ class TestCompatibilityChecks:
     def test_amber_tip3p_is_not_forbidden(
         self, kb: KnowledgeBase
     ) -> None:
-        """AMBER + TIP3P is not a forbidden combination."""
+        """AMBER + TIP3P is not forbidden."""
         is_forbidden, _ = kb.is_combination_forbidden(
             force_field="amber99sb-ildn",
             water_model="TIP3P",
@@ -805,15 +1143,32 @@ class TestCompatibilityChecks:
     def test_compatibility_matrix_has_entries(
         self, kb: KnowledgeBase
     ) -> None:
-        """Compatibility matrix has protein simulation entries."""
+        """
+        Compatibility matrix has protein simulation
+        entries accessible via top_choices.
+        """
         matrix = kb.get_compatibility_matrix()
         assert "standard_folded_protein" in (
             matrix.protein_simulations
         )
-        entries = matrix.protein_simulations[
+        system = matrix.protein_simulations[
             "standard_folded_protein"
         ]
-        assert len(entries) >= 1
+        # Access entries via top_choices, not directly
+        assert len(system.top_choices) >= 1
+
+    def test_system_type_has_description(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        Each system type entry has a description field.
+        """
+        matrix = kb.get_compatibility_matrix()
+        system = matrix.protein_simulations[
+            "standard_folded_protein"
+        ]
+        assert system.description is not None
+        assert len(system.description) > 0
 
     def test_recommended_entry_has_correct_rating(
         self, kb: KnowledgeBase
@@ -822,7 +1177,7 @@ class TestCompatibilityChecks:
         matrix = kb.get_compatibility_matrix()
         entries = matrix.protein_simulations[
             "standard_folded_protein"
-        ]
+        ].top_choices
         amber_entry = next(
             (
                 e for e in entries
@@ -836,6 +1191,26 @@ class TestCompatibilityChecks:
             == CompatibilityRating.RECOMMENDED
         )
 
+    def test_forbidden_combinations_are_list(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        forbidden_combinations is a flat list, not a
+        dict with a nested description key. Verifies
+        the YAML structural fix was applied correctly.
+        """
+        matrix = kb.get_compatibility_matrix()
+        assert isinstance(
+            matrix.forbidden_combinations, list
+        )
+        for entry in matrix.forbidden_combinations:
+            # Each entry must have combination and reason
+            assert entry.combination is not None
+            assert entry.reason is not None
+            assert isinstance(
+                entry.combination, dict
+            )
+
 
 class TestCommonMistakesRegistry:
     """Tests for common mistakes registry."""
@@ -843,7 +1218,7 @@ class TestCommonMistakesRegistry:
     def test_cm001_exists(
         self, kb: KnowledgeBase
     ) -> None:
-        """CM001 (Berendsen in production) is in registry."""
+        """CM001 (Berendsen in production) exists."""
         mistakes = kb.get_common_mistakes()
         cm001 = mistakes.get_by_id("CM001")
         assert cm001 is not None
@@ -890,10 +1265,12 @@ class TestCommonMistakesRegistry:
     def test_all_critical_errors_have_error_severity(
         self, kb: KnowledgeBase
     ) -> None:
-        """All entries in critical_errors have ERROR severity."""
+        """All critical_errors have ERROR severity."""
         mistakes = kb.get_common_mistakes()
         for mistake in mistakes.critical_errors:
-            assert mistake.severity == Severity.ERROR, (
+            assert (
+                mistake.severity == Severity.ERROR
+            ), (
                 f"Expected ERROR for {mistake.id}, "
                 f"got {mistake.severity}"
             )
@@ -901,13 +1278,69 @@ class TestCommonMistakesRegistry:
     def test_all_warnings_have_warning_severity(
         self, kb: KnowledgeBase
     ) -> None:
-        """All entries in warnings have WARNING severity."""
+        """All warnings have WARNING severity."""
         mistakes = kb.get_common_mistakes()
         for mistake in mistakes.warnings:
-            assert mistake.severity == Severity.WARNING, (
+            assert (
+                mistake.severity == Severity.WARNING
+            ), (
                 f"Expected WARNING for {mistake.id}, "
                 f"got {mistake.severity}"
             )
+
+    def test_get_by_severity_errors(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """get_by_severity(ERROR) returns only errors."""
+        mistakes = kb.get_common_mistakes()
+        errors = mistakes.get_by_severity(
+            Severity.ERROR
+        )
+        assert len(errors) > 0
+        for m in errors:
+            assert m.severity == Severity.ERROR
+
+    def test_get_by_severity_warnings(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """get_by_severity(WARNING) returns warnings."""
+        mistakes = kb.get_common_mistakes()
+        warnings = mistakes.get_by_severity(
+            Severity.WARNING
+        )
+        assert len(warnings) > 0
+        for m in warnings:
+            assert m.severity == Severity.WARNING
+
+    def test_get_by_phase_production(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        get_by_phase('production_md') returns mistakes
+        applicable to production MD.
+        """
+        mistakes = kb.get_common_mistakes()
+        prod_mistakes = mistakes.get_by_phase(
+            "production_md"
+        )
+        assert len(prod_mistakes) > 0
+        ids = [m.id for m in prod_mistakes]
+        assert "CM001" in ids
+
+    def test_get_by_phase_nvt(
+        self, kb: KnowledgeBase
+    ) -> None:
+        """
+        get_by_phase('nvt_equilibration') returns
+        mistakes applicable to NVT equilibration.
+        """
+        mistakes = kb.get_common_mistakes()
+        nvt_mistakes = mistakes.get_by_phase(
+            "nvt_equilibration"
+        )
+        assert len(nvt_mistakes) > 0
+        ids = [m.id for m in nvt_mistakes]
+        assert "CM004" in ids
 
 
 class TestErrorHandling:
@@ -916,14 +1349,16 @@ class TestErrorHandling:
     def test_missing_directory_raises_error(
         self, tmp_path: Path
     ) -> None:
-        """Non-existent directory raises KnowledgeBaseError."""
+        """Non-existent directory raises error."""
         with pytest.raises(KnowledgeBaseError):
-            KnowledgeBase(tmp_path / "nonexistent")
+            KnowledgeBase(
+                tmp_path / "nonexistent"
+            )
 
     def test_missing_file_raises_error(
         self, kb_dir: Path, tmp_path: Path
     ) -> None:
-        """Missing required file raises KnowledgeBaseError."""
+        """Missing required file raises error."""
         broken_kb = tmp_path / "broken_kb"
         shutil.copytree(kb_dir, broken_kb)
         (broken_kb / "common_mistakes.yaml").unlink()
@@ -943,7 +1378,9 @@ class TestErrorHandling:
         with open(
             broken_kb / "common_mistakes.yaml", "w"
         ) as f:
-            f.write("invalid: yaml: content: [unclosed")
+            f.write(
+                "invalid: yaml: content: [unclosed"
+            )
 
         with pytest.raises(
             KnowledgeBaseError,
@@ -975,14 +1412,18 @@ class TestErrorHandling:
         broken_kb = tmp_path / "broken_kb"
         shutil.copytree(kb_dir, broken_kb)
 
-        # Write a phase file with wrong root key
         with open(
-            broken_kb / "phases"
+            broken_kb
+            / "phases"
             / "energy_minimization.yaml",
             "w",
         ) as f:
             yaml.dump(
-                {"wrong_key": {"description": "test"}},
+                {
+                    "wrong_key": {
+                        "description": "test"
+                    }
+                },
                 f,
             )
 
@@ -1005,30 +1446,24 @@ class TestSingleton:
         )
 
         get_knowledge_base.cache_clear()
-
         kb1 = get_knowledge_base(str(kb_dir))
         kb2 = get_knowledge_base(str(kb_dir))
         assert kb1 is kb2
-
         get_knowledge_base.cache_clear()
 
     def test_different_dirs_return_different_instances(
         self, kb_dir: Path, tmp_path: Path
     ) -> None:
-        """Different directories return different instances."""
+        """Different dirs return different instances."""
         from shared.knowledge_base_loader import (
             get_knowledge_base,
         )
 
         get_knowledge_base.cache_clear()
-
-        # Build a second minimal KB in a different location
         kb_dir_2 = _build_minimal_kb(
             tmp_path / "second"
         )
-
         kb1 = get_knowledge_base(str(kb_dir))
         kb2 = get_knowledge_base(str(kb_dir_2))
         assert kb1 is not kb2
-
         get_knowledge_base.cache_clear()

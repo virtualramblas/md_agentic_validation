@@ -1,146 +1,145 @@
 npt_equilibration:
   description: >
-    Constant Number, Pressure, Temperature ensemble. Second equilibration phase.
-    Purpose: equilibrate system density and pressure at target conditions.
-    Position restraints on solute heavy atoms still recommended but can be
-    gradually reduced. Must follow successful NVT equilibration.
+    NPT (constant Number of particles, Pressure,
+    Temperature) equilibration phase. Brings the system
+    to the target pressure and equilibrates the box
+    volume after NVT equilibration has established the
+    correct temperature. Must follow NVT equilibration.
+    Velocities are read from the NVT checkpoint file —
+    they must NOT be regenerated. Position restraints
+    should remain active during NPT equilibration.
+    Use Berendsen or c-rescale barostat for fast,
+    stable pressure convergence — NOT Parrinello-Rahman,
+    which can cause large pressure oscillations when
+    the system is far from the target pressure.
 
   prerequisites:
     must_follow: nvt_equilibration
     required_input_files:
-      - nvt_output.gro
-      - nvt_output.cpt
-      - topology.top
+      - nvt.gro
+      - nvt.cpt
+      - topol.top
       - posre.itp
     continuation: true
+    posre_itp_required: true
     notes: >
-      Checkpoint file (.cpt) from NVT is required to continue with
-      correct velocities. gen-vel must be 'no' since velocities
-      are read from checkpoint.
+      NPT equilibration continues from the NVT
+      checkpoint. The -t nvt.cpt flag in gmx grompp
+      reads velocities from the NVT checkpoint.
+      The -c nvt.gro flag provides the final NVT
+      coordinates. Both are required.
 
   run_control:
     parameters:
       integrator:
         type: enum
         required: true
-        allowed_values: [md, sd]
+        allowed_values:
+          - md
+          - sd
+        forbidden_values:
+          - steep
+          - cg
+          - l-bfgs
         recommended: md
-        forbidden_values: [steep, cg, l-bfgs, bd]
         notes: >
-          md (leap-frog) is standard. sd (Langevin dynamics) is an
-          alternative that provides implicit thermostatting but alters
-          the dynamics — use only if explicitly required by the
-          scientific question.
-
-      dt:
-        type: float
-        required: true
-        min: 0.001
-        max: 0.002
-        recommended: 0.002
-        unit: ps
-        notes: >
-          Same as NVT. Maintain consistency across equilibration phases.
+          md (leap-frog integrator) is the standard
+          choice. Must match the integrator used in
+          NVT equilibration for thermodynamic
+          consistency.
 
       nsteps:
         type: integer
         required: true
-        min: 50000
-        max: 500000
-        recommended: 100000
-        unit: steps
-        derived_time:
-          formula: nsteps * dt
-          min_time_ps: 100.0
-          recommended_time_ps: 200.0
+        min: 25000
+        max: 1000000
+        recommended: 50000
         notes: >
-          Minimum 100 ps (50000 steps at 2 fs). 200 ps (100000 steps)
-          recommended as standard. Density typically converges within
-          100-200 ps for simple protein-water systems. Membrane systems
-          or large complexes may require 500 ps - 2 ns NPT equilibration.
-          Insufficient NPT equilibration leads to pressure artifacts
-          in production MD.
+          Number of MD steps. With dt = 0.002 ps,
+          50000 steps = 100 ps. 100 ps is the minimum
+          recommended NPT equilibration time for
+          density convergence in simple protein-water
+          systems. Use 500 ps to 2 ns for membrane
+          systems or large complexes. Always verify
+          density convergence before proceeding to
+          production MD.
+
+      dt:
+        type: float
+        required: true
+        min: 0.0005
+        max: 0.004
+        recommended: 0.002
+        unit: ps
+        notes: >
+          Integration timestep. Must match the
+          timestep used in NVT equilibration.
+          0.002 ps (2 fs) is standard with h-bonds
+          constraints.
 
       continuation:
         type: enum
         required: true
-        allowed_values: ["yes"]
-        forbidden_values: ["no"]
+        allowed_values:
+          - "yes"
+        forbidden_values:
+          - "no"
+        recommended: "yes"
         notes: >
-          MUST be 'yes' — continuing from NVT checkpoint. Setting 'no'
-          would restart the simulation from scratch, losing NVT
-          equilibration progress.
-
-      comm-mode:
-        type: enum
-        required: false
-        allowed_values: [Linear, Angular, None]
-        recommended: Linear
-        notes: >
-          Remove center of mass translation. Linear is standard.
-
-      nstcomm:
-        type: integer
-        required: false
-        min: 1
-        max: 100
-        recommended: 100
-        notes: Frequency of COM motion removal. Every 100 steps is standard.
+          MUST be "yes". NPT equilibration continues
+          from the NVT checkpoint. Setting continuation
+          = "no" would cause GROMACS to apply
+          constraints to the initial coordinates,
+          which is incorrect when continuing from
+          a checkpoint.
 
   output_control:
     parameters:
-      nstxout:
-        type: integer
-        required: false
-        min: 0
-        max: 50000
-        recommended: 0
-        notes: >
-          Full precision output not recommended — use compressed output.
-
-      nstvout:
-        type: integer
-        required: false
-        min: 0
-        max: 50000
-        recommended: 0
-        notes: Velocity output not needed for equilibration analysis.
-
       nstlog:
         type: integer
         required: true
         min: 100
-        max: 5000
+        max: 10000
         recommended: 500
-        notes: Log file output frequency. 500 steps is standard.
+        notes: >
+          Write to log file every nstlog steps.
+          500 steps = 1 ps with dt = 0.002 ps.
 
       nstenergy:
         type: integer
         required: true
         min: 100
-        max: 5000
+        max: 10000
         recommended: 500
         notes: >
-          Critical for NPT: energy file must capture density and pressure
-          evolution for equilibration assessment. 500 steps (1 ps) is
-          sufficient resolution.
+          Write energies to .edr file every nstenergy
+          steps. 500 is standard. Density and pressure
+          are written to the .edr file and must be
+          monitored for convergence.
 
       nstxout-compressed:
         type: integer
-        required: false
+        required: true
         min: 0
-        max: 5000
+        max: 10000
         recommended: 500
-        notes: Compressed trajectory output. 500 steps (1 ps) is standard.
+        notes: >
+          Write compressed trajectory every N steps.
+          500 steps = 1 ps with dt = 0.002 ps.
 
   neighbor_searching:
     parameters:
       cutoff-scheme:
         type: enum
         required: true
-        allowed_values: [Verlet]
-        forbidden_values: [group]
-        notes: Verlet mandatory — same as all other phases.
+        allowed_values:
+          - Verlet
+        forbidden_values:
+          - group
+        recommended: Verlet
+        notes: >
+          Verlet is mandatory. Must match all other
+          phases.
 
       nstlist:
         type: integer
@@ -149,116 +148,168 @@ npt_equilibration:
         max: 40
         recommended: 10
         notes: >
-          10 is standard. GROMACS auto-adjusts nstlist with Verlet
-          scheme for optimal performance.
+          Update neighbor list every nstlist steps.
+          10 is standard with the Verlet scheme.
+          Must match NVT equilibration setting.
 
-      rlist:
+      rcoulomb:
         type: float
-        required: false
+        required: true
         min: 0.8
         max: 1.6
         recommended: 1.0
         unit: nm
-        notes: Auto-adjusted by GROMACS with Verlet scheme.
+        notes: >
+          Coulomb cutoff. Must be identical to the
+          value used in NVT equilibration and
+          production MD. Changing cutoffs between
+          phases introduces energy discontinuities.
+
+      rvdw:
+        type: float
+        required: true
+        min: 0.8
+        max: 1.6
+        recommended: 1.0
+        unit: nm
+        must_equal: rcoulomb
+        notes: >
+          VdW cutoff. Must equal rcoulomb and must
+          be identical to NVT and production values.
+
+      pbc:
+        type: enum
+        required: true
+        allowed_values:
+          - xyz
+        forbidden_values:
+          - "no"
+          - xy
+        recommended: xyz
+        notes: >
+          Full 3D periodic boundary conditions.
+          Mandatory for all explicit solvent
+          simulations.
 
   electrostatics:
     parameters:
       coulombtype:
         type: enum
         required: true
-        allowed_values: [PME]
+        allowed_values:
+          - PME
+        forbidden_values:
+          - Cut-off
+          - Reaction-Field
         recommended: PME
-        forbidden_values: [Cut-off]
         notes: >
-          PME mandatory for explicit solvent NPT. Must be consistent
-          with NVT phase.
-
-      rcoulomb:
-        type: float
-        required: true
-        min: 0.9
-        max: 1.2
-        recommended: 1.0
-        unit: nm
-        must_equal: rvdw
-        notes: >
-          Must be identical to NVT phase. Changing cutoff between
-          equilibration phases introduces artifacts.
+          PME is mandatory. Must match all other
+          phases.
 
       pme-order:
         type: integer
         required: false
         min: 4
-        max: 6
+        max: 8
         recommended: 4
-        notes: 4 (cubic interpolation) is standard and sufficient.
+        notes: >
+          PME interpolation order. Must match all
+          other phases.
 
       fourierspacing:
         type: float
         required: false
-        min: 0.10
-        max: 0.16
+        min: 0.1
+        max: 0.2
         recommended: 0.16
         unit: nm
-        notes: Must be consistent with NVT phase.
+        notes: >
+          Grid spacing for PME FFT. Must match all
+          other phases.
 
   vdw:
     parameters:
       vdwtype:
         type: enum
         required: true
-        allowed_values: [Cut-off]
+        allowed_values:
+          - Cut-off
+          - PME
         recommended: Cut-off
-        notes: Cut-off with dispersion correction is standard.
+        notes: >
+          Must match NVT equilibration and production
+          MD settings.
 
       rvdw:
         type: float
         required: true
-        min: 0.9
-        max: 1.2
+        min: 0.8
+        max: 1.6
         recommended: 1.0
         unit: nm
         must_equal: rcoulomb
-        notes: Must be identical to NVT phase.
 
       vdw-modifier:
         type: enum
         required: false
-        allowed_values: [Potential-shift]
+        allowed_values:
+          - Potential-shift
+          - Force-switch
+          - Potential-switch
+          - None
         recommended: Potential-shift
-        notes: Must be consistent with NVT phase.
+        notes: >
+          Must match NVT equilibration and production
+          MD settings. Potential-shift for
+          AMBER/OPLS/GROMOS. Force-switch for
+          CHARMM36/36m.
 
       DispCorr:
         type: enum
-        required: true
-        allowed_values: [EnerPres]
+        required: false
+        allowed_values:
+          - "no"
+          - EnerPres
+          - Ener
         recommended: EnerPres
-        forbidden_values: ["no"]
         notes: >
-          EnerPres is MANDATORY for NPT simulations. Dispersion correction
-          is critical for accurate density and pressure. Omitting it leads
-          to systematically wrong density values (~2-5% error).
+          Long-range dispersion correction. EnerPres
+          is critical for correct density and pressure
+          in NPT simulations with AMBER/OPLS/GROMOS.
+          Must be "no" for CHARMM36/36m. Must match
+          NVT equilibration and production MD settings.
 
   temperature_coupling:
     parameters:
       tcoupl:
         type: enum
         required: true
-        allowed_values: [v-rescale, nose-hoover]
+        allowed_values:
+          - v-rescale
+          - berendsen
+          - nose-hoover
+          - andersen
+        forbidden_values:
+          - "no"
         recommended: v-rescale
-        forbidden_values: ["no", berendsen]
         notes: >
-          Same recommendation as NVT. v-rescale for equilibration.
-          Must be consistent with NVT phase to avoid discontinuities.
+          Temperature coupling is mandatory during
+          NPT equilibration. v-rescale is recommended
+          for equilibration. Must match NVT
+          equilibration thermostat for consistency.
+          MUST NOT be "no".
 
       tc-grps:
         type: string
         required: true
-        recommended_values:
-          - "Protein Non-Protein"
+        allowed_values:
+          - Protein Non-Protein
+          - Protein_DNA Non-Protein
+          - System
+        recommended: Protein Non-Protein
         notes: >
-          Must use same groups as NVT equilibration. Changing coupling
-          groups between phases introduces artifacts.
+          Must match NVT equilibration tc-grps
+          setting exactly.
 
       tau-t:
         type: float
@@ -267,7 +318,9 @@ npt_equilibration:
         max: 2.0
         recommended: 0.1
         unit: ps
-        notes: Keep consistent with NVT phase.
+        notes: >
+          Temperature coupling time constant.
+          Must match NVT equilibration value.
 
       ref-t:
         type: float
@@ -276,36 +329,52 @@ npt_equilibration:
         max: 370.0
         recommended: 300.0
         unit: K
-        notes: Must equal NVT ref-t for continuity.
+        notes: >
+          Target temperature. MUST be identical to
+          the ref-t value used in NVT equilibration
+          and production MD. Temperature inconsistency
+          across phases is a critical error.
 
   pressure_coupling:
     parameters:
       pcoupl:
         type: enum
         required: true
-        allowed_values: [berendsen, c-rescale, parrinello-rahman]
+        allowed_values:
+          - berendsen
+          - c-rescale
+          - parrinello-rahman
+        forbidden_values:
+          - "no"
+          - mttk
         recommended: berendsen
-        forbidden_values: ["no", mttk]
         notes: >
-          Berendsen is recommended for NPT EQUILIBRATION (not production)
-          because it drives the system to target pressure quickly and
-          stably, even if it does not sample the correct NPT ensemble.
-          Parrinello-Rahman can cause large pressure oscillations if
-          the system is far from equilibrium — use only after density
-          has converged with Berendsen, or use c-rescale (GROMACS 2021+)
-          which combines fast convergence with correct ensemble sampling.
-          IMPORTANT: Switch to Parrinello-Rahman for production MD.
+          Pressure coupling is mandatory during NPT
+          equilibration. Berendsen is strongly
+          recommended for NPT equilibration — it
+          converges quickly and stably even when the
+          system is far from the target pressure.
+          c-rescale (GROMACS 2021+) is an acceptable
+          alternative. Parrinello-Rahman is NOT
+          recommended for equilibration — it can
+          cause large pressure oscillations and
+          simulation instability when the system is
+          far from equilibrium. Switch to
+          Parrinello-Rahman for production MD.
 
       pcoupltype:
         type: enum
         required: true
-        allowed_values: [isotropic, semiisotropic, anisotropic]
+        allowed_values:
+          - isotropic
+          - semiisotropic
+          - anisotropic
         recommended: isotropic
         notes: >
-          isotropic for globular proteins in water — all box dimensions
-          scaled equally. semiisotropic required for membrane systems
-          (different scaling in XY plane vs Z axis). anisotropic rarely
-          needed for standard protein simulations.
+          isotropic for standard protein-water
+          systems. semiisotropic for membrane systems
+          (independent XY and Z coupling). anisotropic
+          for crystal simulations.
 
       tau-p:
         type: float
@@ -315,10 +384,10 @@ npt_equilibration:
         recommended: 2.0
         unit: ps
         notes: >
-          Pressure coupling time constant. 2.0 ps is standard for
-          Berendsen during equilibration. Values below 0.5 ps cause
-          over-coupling and instability. Values above 5.0 ps result
-          in very slow pressure convergence.
+          Pressure coupling time constant. 2.0 ps is
+          standard for Berendsen during equilibration.
+          Use 2.0 ps for Parrinello-Rahman in
+          production MD.
 
       ref-p:
         type: float
@@ -328,51 +397,68 @@ npt_equilibration:
         recommended: 1.0
         unit: bar
         notes: >
-          Target pressure. 1.0 bar (approximately 1 atm) is standard
-          for physiological simulations. One value for isotropic;
-          two values (x-y, z) for semiisotropic coupling.
+          Target pressure. 1.0 bar is standard
+          physiological pressure. Must be identical
+          to the ref-p value used in production MD.
 
       compressibility:
         type: float
         required: true
         min: 1.0e-6
-        max: 1.0e-3
+        max: 1.0e-4
         recommended: 4.5e-5
         unit: bar^-1
         notes: >
-          Isothermal compressibility of the system. 4.5e-5 bar^-1 is
-          the compressibility of liquid water at 300 K and is appropriate
-          for aqueous systems. One value for isotropic; two values for
-          semiisotropic coupling.
+          Isothermal compressibility of water.
+          4.5e-5 bar^-1 is the standard value for
+          liquid water at 300 K. Must be identical
+          to the value used in production MD.
 
   velocity_generation:
     parameters:
       gen-vel:
         type: enum
         required: true
-        allowed_values: ["no"]
-        forbidden_values: ["yes"]
+        allowed_values:
+          - "no"
+        forbidden_values:
+          - "yes"
+        recommended: "no"
         notes: >
-          MUST be 'no' — velocities are read from NVT checkpoint file.
-          Regenerating velocities would discard NVT equilibration and
-          introduce a discontinuity in the simulation.
+          MUST be "no". Velocities are read from the
+          NVT checkpoint file specified with the -t
+          flag in gmx grompp. Regenerating velocities
+          would discard all NVT equilibration and
+          restart the simulation from scratch.
 
   constraints:
     parameters:
       constraints:
         type: enum
         required: true
-        allowed_values: [h-bonds, all-bonds]
+        allowed_values:
+          - h-bonds
+          - all-bonds
+          - h-angles
+          - all-angles
+        forbidden_values:
+          - none
         recommended: h-bonds
-        forbidden_values: [none]
-        notes: Must be consistent with NVT phase.
+        notes: >
+          Must match NVT equilibration constraints
+          setting. Changing constraints between phases
+          alters the effective degrees of freedom and
+          introduces thermodynamic inconsistencies.
 
       constraint-algorithm:
         type: enum
-        required: true
-        allowed_values: [LINCS, SHAKE]
+        required: false
+        allowed_values:
+          - LINCS
+          - SHAKE
         recommended: LINCS
-        notes: Must be consistent with NVT phase.
+        notes: >
+          Must match NVT equilibration setting.
 
       lincs-order:
         type: integer
@@ -381,8 +467,7 @@ npt_equilibration:
         max: 8
         recommended: 4
         notes: >
-          Increase to 6 if LINCS warnings were observed during
-          NVT equilibration.
+          Must match NVT equilibration setting.
 
       lincs-iter:
         type: integer
@@ -391,20 +476,25 @@ npt_equilibration:
         max: 4
         recommended: 1
         notes: >
-          Increase to 2 if LINCS warnings persist after increasing
-          lincs-order.
+          Must match NVT equilibration setting.
 
   position_restraints:
     parameters:
       define:
         type: string
-        required: true
-        allowed_values: ["-DPOSRES", "-DPOSRES_HEAVY", ""]
-        recommended: "-DPOSRES"
+        required: false
+        allowed_values:
+          - -DPOSRES
+          - -DPOSRES_HEAVY
+          - ""
+        recommended: -DPOSRES
         notes: >
-          Position restraints still recommended during NPT equilibration.
-          Can be gradually reduced (e.g., from 1000 to 100 kJ/mol/nm²)
-          across multiple NPT stages for large or complex systems.
-          Removing restraints entirely during NPT is acceptable for
-          simple, well-behaved systems but risks structural distortion
-          before density has converged.
+          Position restraints should remain active
+          during NPT equilibration. The system needs
+          time to equilibrate the box volume and
+          density with the solute restrained. Removing
+          position restraints before density has
+          converged can lead to poor starting
+          conditions for production MD. Position
+          restraints are removed in the production
+          MD phase.

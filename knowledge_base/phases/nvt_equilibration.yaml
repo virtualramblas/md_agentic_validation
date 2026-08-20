@@ -1,53 +1,49 @@
 nvt_equilibration:
   description: >
-    Constant Number, Volume, Temperature ensemble. First equilibration phase.
-    Purpose: bring system to target temperature while keeping volume fixed.
-    Position restraints on heavy atoms of solute are strongly recommended.
-    Must follow successful energy minimization.
+    NVT (constant Number of particles, Volume,
+    Temperature) equilibration phase. Brings the system
+    to the target temperature at constant volume before
+    pressure coupling is introduced. Must follow energy
+    minimization. Position restraints on solute heavy
+    atoms are strongly recommended to prevent solute
+    distortion while the solvent equilibrates around it.
+    No pressure coupling. Velocities must be generated
+    from a Maxwell-Boltzmann distribution.
 
   prerequisites:
     must_follow: energy_minimization
     required_input_files:
-      - em_output.gro
-      - topology.top
+      - em.gro
+      - topol.top
       - posre.itp
+    continuation: false
     posre_itp_required: true
     notes: >
-      Position restraint file (posre.itp) must be generated and included
-      in topology. Restraints prevent solute from moving while solvent
-      equilibrates around it.
+      NVT equilibration always follows energy
+      minimization. No checkpoint file from EM is
+      required — velocities are generated fresh.
+      The posre.itp file must exist and be included
+      in the topology for position restraints to work.
 
   run_control:
     parameters:
       integrator:
         type: enum
         required: true
-        allowed_values: [md, sd]
+        allowed_values:
+          - md
+          - sd
+        forbidden_values:
+          - steep
+          - cg
+          - l-bfgs
         recommended: md
-        forbidden_values: [steep, cg, l-bfgs, bd]
         notes: >
-          md (leap-frog) is standard. sd (stochastic dynamics / Langevin)
-          is an alternative that includes thermostat implicitly but changes
-          the dynamics character. Use md with explicit thermostat for
-          standard NVT equilibration.
-
-      dt:
-        type: float
-        required: true
-        min: 0.001
-        max: 0.002
-        recommended: 0.002
-        unit: ps
-        notes: >
-          2 fs (0.002 ps) is standard with hydrogen bond constraints
-          (h-bonds or all-bonds). Reduce to 1 fs if constraints=none
-          or if system is unstable. Never exceed 2 fs without
-          h-mass repartitioning.
-        depends_on:
-          constraints:
-            parameter: constraints
-            if_value: none
-            then_max: 0.001
+          md (leap-frog integrator) is the standard
+          choice for NVT equilibration. sd (stochastic
+          dynamics / Langevin) is an alternative that
+          combines integration with thermostatting but
+          is less commonly used for equilibration.
 
       nsteps:
         type: integer
@@ -55,92 +51,73 @@ nvt_equilibration:
         min: 25000
         max: 500000
         recommended: 50000
-        unit: steps
-        derived_time:
-          formula: nsteps * dt
-          min_time_ps: 50.0
-          recommended_time_ps: 100.0
         notes: >
-          Minimum 50 ps (25000 steps at 2 fs) for simple systems.
-          100 ps (50000 steps) recommended as standard. Complex or
-          large systems may require 500 ps - 1 ns. Insufficient
-          equilibration leads to artifacts in subsequent NPT phase.
+          Number of MD steps. With dt = 0.002 ps,
+          50000 steps = 100 ps. 100 ps is the minimum
+          recommended NVT equilibration time for simple
+          protein-water systems. Use 200-500 ps for
+          larger or more complex systems.
 
-      comm-mode:
-        type: enum
-        required: false
-        allowed_values: [Linear, Angular, None]
-        recommended: Linear
+      dt:
+        type: float
+        required: true
+        min: 0.0005
+        max: 0.004
+        recommended: 0.002
+        unit: ps
         notes: >
-          Remove center of mass translation. Linear is standard.
-          Angular removal not recommended for periodic systems.
-
-      nstcomm:
-        type: integer
-        required: false
-        min: 1
-        max: 100
-        recommended: 100
-        notes: Frequency of COM motion removal. Every 100 steps is standard.
+          Integration timestep. 0.002 ps (2 fs) is
+          standard when hydrogen bond constraints are
+          applied. Use 0.001 ps (1 fs) if constraints
+          are disabled. Do not exceed 0.002 ps without
+          hydrogen mass repartitioning.
 
   output_control:
     parameters:
-      nstxout:
-        type: integer
-        required: false
-        min: 0
-        max: 50000
-        recommended: 0
-        notes: >
-          Full precision coordinate output. Set to 0 and use compressed
-          output (nstxout-compressed) instead to save disk space.
-
-      nstvout:
-        type: integer
-        required: false
-        min: 0
-        max: 50000
-        recommended: 0
-        notes: Velocity output. Not needed for equilibration analysis.
-
       nstlog:
         type: integer
         required: true
         min: 100
-        max: 5000
+        max: 10000
         recommended: 500
         notes: >
-          Log file output frequency. Every 500 steps (1 ps at 2 fs)
-          is standard.
+          Write to log file every nstlog steps.
+          500 steps = 1 ps with dt = 0.002 ps.
 
       nstenergy:
         type: integer
         required: true
         min: 100
-        max: 5000
+        max: 10000
         recommended: 500
         notes: >
-          Energy file output frequency. 500 steps allows monitoring of
-          temperature convergence during NVT.
+          Write energies to .edr file every nstenergy
+          steps. 500 is standard for NVT equilibration.
 
       nstxout-compressed:
         type: integer
-        required: false
+        required: true
         min: 0
-        max: 5000
+        max: 10000
         recommended: 500
         notes: >
-          Compressed trajectory output. 500 steps (1 ps) is sufficient
-          for equilibration monitoring. Not critical for analysis.
+          Write compressed trajectory every N steps.
+          500 steps = 1 ps with dt = 0.002 ps.
+          Sufficient for monitoring equilibration.
 
   neighbor_searching:
     parameters:
       cutoff-scheme:
         type: enum
         required: true
-        allowed_values: [Verlet]
-        forbidden_values: [group]
-        notes: Same as EM — Verlet mandatory.
+        allowed_values:
+          - Verlet
+        forbidden_values:
+          - group
+        recommended: Verlet
+        notes: >
+          Verlet is mandatory. The group scheme is
+          deprecated and removed in GROMACS 2021+.
 
       nstlist:
         type: integer
@@ -149,72 +126,104 @@ nvt_equilibration:
         max: 40
         recommended: 10
         notes: >
-          10 is standard with Verlet scheme. GROMACS auto-adjusts nstlist
-          with Verlet scheme for optimal performance. Values up to 40
-          acceptable for GPU-accelerated runs.
+          Update neighbor list every nstlist steps.
+          10 is standard with the Verlet scheme.
+          GROMACS may adjust this automatically for
+          performance with the Verlet scheme.
 
-      rlist:
+      rcoulomb:
         type: float
-        required: false
+        required: true
         min: 0.8
         max: 1.6
         recommended: 1.0
         unit: nm
-        notes: Auto-adjusted by GROMACS with Verlet scheme.
+        notes: >
+          Coulomb cutoff. Must equal rvdw when using
+          Verlet scheme. 1.0 nm for AMBER/OPLS/GROMOS.
+          1.2 nm for CHARMM36/36m.
+
+      rvdw:
+        type: float
+        required: true
+        min: 0.8
+        max: 1.6
+        recommended: 1.0
+        unit: nm
+        must_equal: rcoulomb
+        notes: >
+          VdW cutoff. Must equal rcoulomb when using
+          Verlet scheme.
+
+      pbc:
+        type: enum
+        required: true
+        allowed_values:
+          - xyz
+        forbidden_values:
+          - "no"
+          - xy
+        recommended: xyz
+        notes: >
+          Full 3D periodic boundary conditions.
+          Mandatory for all explicit solvent simulations.
 
   electrostatics:
     parameters:
       coulombtype:
         type: enum
         required: true
-        allowed_values: [PME]
+        allowed_values:
+          - PME
+        forbidden_values:
+          - Cut-off
+          - Reaction-Field
         recommended: PME
-        forbidden_values: [Cut-off]
         notes: >
-          PME mandatory for explicit solvent NVT. Cut-off is not
-          acceptable for production-quality equilibration of
-          solvated biomolecular systems.
-
-      rcoulomb:
-        type: float
-        required: true
-        min: 0.9
-        max: 1.2
-        recommended: 1.0
-        unit: nm
-        must_equal: rvdw
-        notes: 1.0 nm standard. Must match rvdw with Verlet scheme.
+          PME is mandatory for all explicit solvent
+          MD simulations. Cut-off electrostatics
+          produces severe artifacts in condensed
+          phase simulations.
 
       pme-order:
         type: integer
         required: false
         min: 4
-        max: 6
+        max: 8
         recommended: 4
-        notes: 4 (cubic interpolation) is standard and sufficient.
+        notes: >
+          PME interpolation order. 4 (cubic) is
+          standard and sufficient.
 
       fourierspacing:
         type: float
         required: false
-        min: 0.10
-        max: 0.16
+        min: 0.1
+        max: 0.2
         recommended: 0.16
         unit: nm
+        notes: >
+          Grid spacing for PME FFT. 0.16 nm is
+          standard.
 
   vdw:
     parameters:
       vdwtype:
         type: enum
         required: true
-        allowed_values: [Cut-off]
+        allowed_values:
+          - Cut-off
+          - PME
         recommended: Cut-off
-        notes: Cut-off with dispersion correction is standard.
+        notes: >
+          Cut-off with dispersion correction is
+          standard for most force fields.
 
       rvdw:
         type: float
         required: true
-        min: 0.9
-        max: 1.2
+        min: 0.8
+        max: 1.6
         recommended: 1.0
         unit: nm
         must_equal: rcoulomb
@@ -222,45 +231,68 @@ nvt_equilibration:
       vdw-modifier:
         type: enum
         required: false
-        allowed_values: [Potential-shift]
+        allowed_values:
+          - Potential-shift
+          - Force-switch
+          - Potential-switch
+          - None
         recommended: Potential-shift
+        notes: >
+          Potential-shift for AMBER/OPLS/GROMOS.
+          Force-switch for CHARMM36/36m.
 
       DispCorr:
         type: enum
         required: false
-        allowed_values: [EnerPres, Ener, "no"]
+        allowed_values:
+          - "no"
+          - EnerPres
+          - Ener
         recommended: EnerPres
         notes: >
-          EnerPres recommended. Applies long-range dispersion correction
-          to both energy and pressure. Important for density accuracy.
+          Long-range dispersion correction. EnerPres
+          for AMBER/OPLS/GROMOS. Must be "no" for
+          CHARMM36/36m.
 
   temperature_coupling:
     parameters:
       tcoupl:
         type: enum
         required: true
-        allowed_values: [v-rescale, nose-hoover]
+        allowed_values:
+          - v-rescale
+          - berendsen
+          - nose-hoover
+          - andersen
+        forbidden_values:
+          - "no"
         recommended: v-rescale
-        forbidden_values: ["no", berendsen, andersen]
         notes: >
-          v-rescale (velocity rescaling with stochastic term) is recommended
-          for equilibration — correctly samples canonical ensemble.
-          Berendsen is forbidden: does not produce correct NVT ensemble
-          and suppresses energy fluctuations.
-          nose-hoover acceptable but has longer equilibration time and
-          can oscillate — better suited for production.
+          Temperature coupling is mandatory during
+          NVT equilibration. v-rescale is the
+          recommended thermostat — it correctly
+          samples the canonical ensemble and converges
+          faster than Nose-Hoover during equilibration.
+          Berendsen is acceptable for equilibration
+          only. Nose-Hoover is correct but converges
+          more slowly when far from equilibrium.
+          MUST NOT be "no".
 
       tc-grps:
         type: string
         required: true
-        recommended_values:
-          - "Protein Non-Protein"
-          - "Protein_DNA Non-Protein"
+        allowed_values:
+          - Protein Non-Protein
+          - Protein_DNA Non-Protein
+          - System
+        recommended: Protein Non-Protein
         notes: >
-          Separate temperature coupling groups for solute and solvent
-          are strongly recommended. Coupling everything together can
-          mask energy transfer problems between solute and solvent.
-          Use 'Protein Non-Protein' for standard protein-water systems.
+          Separate temperature coupling groups for
+          solute and solvent are strongly recommended.
+          "Protein Non-Protein" applies separate
+          thermostats to the protein and the solvent
+          (water + ions). Using "System" as a single
+          group can mask energy transfer problems.
 
       tau-t:
         type: float
@@ -270,11 +302,10 @@ nvt_equilibration:
         recommended: 0.1
         unit: ps
         notes: >
-          Temperature coupling time constant. 0.1 ps is standard for
-          equilibration with v-rescale. Values below 0.05 ps cause
-          over-coupling and unphysical dynamics. Values above 1.0 ps
-          result in slow temperature convergence during equilibration.
-          One value required per tc-grps entry.
+          Temperature coupling time constant.
+          0.1 ps is standard for v-rescale during
+          equilibration. Use 0.5-1.0 ps for
+          Nose-Hoover in production.
 
       ref-t:
         type: float
@@ -284,34 +315,48 @@ nvt_equilibration:
         recommended: 300.0
         unit: K
         notes: >
-          Target temperature. 300 K (27°C) is standard for physiological
-          simulations. Must match across all tc-grps entries.
-          One value required per tc-grps entry.
+          Target temperature. Must be identical
+          across all MD phases (NVT, NPT, production).
+          Standard physiological temperature is 300 K
+          (approximately 27 degrees C). Use 310 K for
+          human body temperature simulations.
 
   pressure_coupling:
     parameters:
       pcoupl:
         type: enum
         required: true
-        allowed_values: ["no"]
-        forbidden_values: [berendsen, parrinello-rahman,
-                           mttk, c-rescale]
+        allowed_values:
+          - "no"
+        forbidden_values:
+          - berendsen
+          - parrinello-rahman
+          - mttk
+          - c-rescale
+        recommended: "no"
         notes: >
-          MUST be 'no' during NVT equilibration. Volume is fixed by
-          definition in the NVT ensemble. Applying pressure coupling
-          here would change the ensemble and defeat the purpose of NVT.
+          MUST be "no" during NVT equilibration.
+          The NVT ensemble requires constant volume.
+          Applying pressure coupling changes the
+          ensemble to NPT and defeats the purpose
+          of the NVT phase.
 
   velocity_generation:
     parameters:
       gen-vel:
         type: enum
         required: true
-        allowed_values: ["yes"]
-        forbidden_values: ["no"]
+        allowed_values:
+          - "yes"
+        forbidden_values:
+          - "no"
+        recommended: "yes"
         notes: >
-          MUST be 'yes' for NVT — velocities must be generated from
-          Maxwell-Boltzmann distribution at ref-t. This is the first
-          MD phase so no prior velocities exist.
+          MUST be "yes" for NVT equilibration.
+          Velocities are generated from a
+          Maxwell-Boltzmann distribution at gen-temp.
+          This is the first MD phase so no checkpoint
+          velocities are available.
 
       gen-temp:
         type: float
@@ -322,9 +367,12 @@ nvt_equilibration:
         unit: K
         must_equal: ref-t
         notes: >
-          Must equal ref-t. Generating velocities at a different
-          temperature than the target causes immediate thermostat
-          correction and wastes equilibration time.
+          Temperature for Maxwell-Boltzmann velocity
+          generation. MUST equal ref-t exactly.
+          Generating velocities at a different
+          temperature than the thermostat target
+          causes an immediate thermostat correction
+          and wastes equilibration time.
 
       gen-seed:
         type: integer
@@ -333,33 +381,43 @@ nvt_equilibration:
         max: 2147483647
         recommended: -1
         notes: >
-          -1 uses a random seed (recommended for reproducibility testing).
-          Set a fixed positive integer for fully reproducible runs.
+          Random seed for velocity generation.
+          -1 uses a random seed based on the system
+          clock. Use a fixed positive integer for
+          reproducible simulations.
 
   constraints:
     parameters:
       constraints:
         type: enum
         required: true
-        allowed_values: [h-bonds, all-bonds, h-angles]
+        allowed_values:
+          - h-bonds
+          - all-bonds
+          - h-angles
+          - all-angles
+        forbidden_values:
+          - none
         recommended: h-bonds
-        forbidden_values: [none]
         notes: >
-          h-bonds (constrain all bonds involving hydrogen) is standard
-          and enables 2 fs timestep. 'none' is forbidden with dt=0.002
-          as it would require dt <= 0.001 for stability and is inefficient.
-          all-bonds constrains all bonds — slightly more stable but
-          removes bond vibration information.
+          h-bonds is the standard choice for MD with
+          dt = 0.002 ps. Constrains all bonds involving
+          hydrogen atoms, allowing the 2 fs timestep.
+          "none" is forbidden with dt > 0.001 ps as
+          it would require a timestep of 1 fs or less
+          for stable integration of H-bond vibrations.
 
       constraint-algorithm:
         type: enum
-        required: true
-        allowed_values: [LINCS, SHAKE]
+        required: false
+        allowed_values:
+          - LINCS
+          - SHAKE
         recommended: LINCS
         notes: >
-          LINCS (Linear Constraint Solver) is faster and more stable
-          than SHAKE for most systems. Use SHAKE only for systems with
-          angle constraints or special requirements.
+          LINCS is preferred over SHAKE for stability
+          and performance. SHAKE is only needed for
+          angle constraints.
 
       lincs-order:
         type: integer
@@ -368,8 +426,9 @@ nvt_equilibration:
         max: 8
         recommended: 4
         notes: >
-          Accuracy of LINCS. 4 is standard. Increase to 6-8 if LINCS
-          warnings appear in log file during equilibration.
+          LINCS constraint order. 4 is standard.
+          Increase to 6 for higher accuracy in
+          production simulations.
 
       lincs-iter:
         type: integer
@@ -378,21 +437,27 @@ nvt_equilibration:
         max: 4
         recommended: 1
         notes: >
-          Number of LINCS correction iterations. 1 is standard.
-          Increase to 2 if LINCS warnings persist after increasing
-          lincs-order.
+          Number of LINCS correction iterations.
+          1 is standard. Increase to 2 if LINCS
+          warnings appear during simulation.
 
   position_restraints:
     parameters:
       define:
         type: string
-        required: true
-        allowed_values: ["-DPOSRES", "-DPOSRES_HEAVY"]
-        recommended: "-DPOSRES"
+        required: false
+        allowed_values:
+          - -DPOSRES
+          - -DPOSRES_HEAVY
+          - ""
+        recommended: -DPOSRES
         notes: >
-          Position restraints MUST be applied during NVT equilibration.
-          -DPOSRES activates restraints defined in posre.itp (typically
-          1000 kJ/mol/nm² on all heavy atoms). This prevents solute
-          from moving while solvent equilibrates around it.
-          Omitting position restraints during NVT is a common and
-          serious mistake that leads to poor equilibration.
+          Position restraints are strongly recommended
+          during NVT equilibration. -DPOSRES restrains
+          all heavy atoms with force constant typically
+          1000 kJ/mol/nm². This prevents solute
+          distortion while the solvent equilibrates
+          around it. Omitting position restraints
+          during NVT may lead to unphysical solute
+          conformations before the system reaches
+          thermal equilibrium.

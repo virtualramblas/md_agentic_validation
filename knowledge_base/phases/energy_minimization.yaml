@@ -1,32 +1,55 @@
 energy_minimization:
   description: >
-    Removes steric clashes and bad geometry from the initial structure.
-    Must be performed before any MD simulation. No temperature or pressure
-    coupling. No velocity generation.
+    Energy minimization phase. Removes steric clashes and
+    unfavorable geometry from the initial structure before
+    any MD simulation. Must always precede equilibration.
+    No temperature or pressure coupling. No velocity
+    generation. Position restraints optional but
+    recommended for solvated systems.
+
+  prerequisites:
+    must_follow: null
+    required_input_files:
+      - processed.gro
+      - topol.top
+      - posre.itp
+    continuation: false
+    posre_itp_required: true
+    notes: >
+      Energy minimization is always the first step.
+      No checkpoint file required. The input structure
+      may have steric clashes — EM will resolve them.
 
   run_control:
     parameters:
       integrator:
         type: enum
         required: true
-        allowed_values: [steep, cg, l-bfgs]
+        allowed_values:
+          - steep
+          - cg
+          - l-bfgs
         recommended: steep
-        forbidden_values: [md, sd, bd]
         notes: >
-          steep (steepest descent) is robust and recommended for initial
-          minimization. cg (conjugate gradient) can follow steep for finer
-          minimization. l-bfgs is memory-intensive and rarely needed.
+          steep (steepest descent) is the standard choice.
+          Robust and reliable for removing clashes.
+          cg (conjugate gradient) is more accurate but
+          slower and less robust for highly strained
+          structures. l-bfgs is the most accurate but
+          rarely needed for standard EM.
 
       nsteps:
         type: integer
         required: true
-        min: 500
-        max: 50000
-        recommended: 5000
+        min: 100
+        max: 100000
+        recommended: 50000
         notes: >
-          Minimization terminates when max force < emtol OR nsteps is reached.
-          50000 is a safe upper bound. If not converged at 50000, the structure
-          likely has severe clashes requiring manual inspection.
+          Maximum number of minimization steps. EM
+          terminates when emtol is reached OR nsteps
+          is exceeded, whichever comes first. 50000
+          is sufficient for most systems. Increase to
+          100000 for large or highly strained systems.
 
       emtol:
         type: float
@@ -36,9 +59,11 @@ energy_minimization:
         recommended: 1000.0
         unit: kJ/mol/nm
         notes: >
-          Maximum force tolerance for convergence. 1000 kJ/mol/nm is standard
-          for preparing MD input. Lower values (100-10) for high-precision
-          minimization but rarely necessary before MD.
+          Convergence criterion. EM stops when maximum
+          force on any atom falls below emtol. 1000
+          kJ/mol/nm is standard for pre-MD minimization.
+          Use 100 kJ/mol/nm for higher quality EM before
+          sensitive calculations.
 
       emstep:
         type: float
@@ -48,8 +73,9 @@ energy_minimization:
         recommended: 0.01
         unit: nm
         notes: >
-          Initial step size for steepest descent. Default 0.01 nm is appropriate
-          for most systems. Reduce if minimization is unstable.
+          Initial step size for steepest descent.
+          0.01 nm is the standard value. Reduce to
+          0.001 nm if EM is unstable or diverging.
 
   output_control:
     parameters:
@@ -57,85 +83,109 @@ energy_minimization:
         type: integer
         required: true
         min: 1
-        max: 1000
+        max: 10000
         recommended: 500
-        notes: Log energy every 500 steps is sufficient for EM.
+        notes: >
+          Write to log file every nstlog steps.
+          500 is standard for EM.
 
       nstenergy:
         type: integer
         required: true
         min: 1
-        max: 1000
+        max: 10000
         recommended: 500
-        notes: Write energy file every 500 steps.
+        notes: >
+          Write energies to .edr file every nstenergy
+          steps. 500 is standard for EM.
 
       nstxout-compressed:
         type: integer
         required: false
         min: 0
-        max: 1000
-        recommended: 0
+        max: 10000
+        recommended: 500
         notes: >
-          Trajectory output not critical during EM. Set to 0 to disable
-          or low value if you want to visualize minimization progress.
+          Write compressed trajectory every N steps.
+          500 is standard for EM. Set to 0 to disable
+          trajectory output during EM.
 
   neighbor_searching:
     parameters:
       cutoff-scheme:
         type: enum
         required: true
-        allowed_values: [Verlet]
-        forbidden_values: [group]
+        allowed_values:
+          - Verlet
+        forbidden_values:
+          - group
+        recommended: Verlet
         notes: >
-          Verlet cutoff scheme is mandatory in modern GROMACS (>= 5.0).
-          group scheme is deprecated and removed in GROMACS 2021+.
+          Verlet is mandatory. The group scheme is
+          deprecated and removed in GROMACS 2021+.
 
       nstlist:
         type: integer
         required: true
         min: 1
-        max: 20
+        max: 100
         recommended: 1
         notes: >
-          Set to 1 for energy minimization — neighbor list updated every step
-          since there is no dynamics. Higher values acceptable but unnecessary.
+          Update neighbor list every nstlist steps.
+          1 is recommended for EM — update every step
+          for maximum accuracy during minimization.
 
-      rlist:
+      rcoulomb:
         type: float
-        required: false
+        required: true
         min: 0.8
         max: 1.6
         recommended: 1.0
         unit: nm
         notes: >
-          With Verlet scheme, rlist is typically set equal to rcoulomb.
-          GROMACS may auto-adjust rlist with Verlet scheme.
+          Coulomb cutoff. Must equal rvdw when using
+          Verlet scheme. 1.0 nm for AMBER/OPLS/GROMOS.
+          1.2 nm for CHARMM36/36m.
+
+      rvdw:
+        type: float
+        required: true
+        min: 0.8
+        max: 1.6
+        recommended: 1.0
+        unit: nm
+        must_equal: rcoulomb
+        notes: >
+          VdW cutoff. Must equal rcoulomb when using
+          Verlet scheme.
+
+      pbc:
+        type: enum
+        required: true
+        allowed_values:
+          - xyz
+        forbidden_values:
+          - "no"
+          - xy
+        recommended: xyz
+        notes: >
+          Full 3D periodic boundary conditions.
+          Mandatory for all explicit solvent simulations.
 
   electrostatics:
     parameters:
       coulombtype:
         type: enum
         required: true
-        allowed_values: [PME, Cut-off, Ewald]
+        allowed_values:
+          - PME
+          - Cut-off
         recommended: PME
         notes: >
-          PME (Particle Mesh Ewald) is strongly recommended for all
-          explicit solvent simulations. Cut-off only acceptable for
-          vacuum or implicit solvent systems.
-
-      rcoulomb:
-        type: float
-        required: true
-        min: 0.8
-        max: 1.4
-        recommended: 1.0
-        unit: nm
-        must_equal: rvdw
-        notes: >
-          1.0 nm is standard with PME. Must be consistent with rvdw
-          when using Verlet cutoff scheme. Values below 0.9 nm risk
-          accuracy loss; above 1.4 nm increases computational cost
-          without significant accuracy gain.
+          PME (Particle Mesh Ewald) is strongly
+          recommended for all explicit solvent
+          simulations. Cut-off is only acceptable
+          for vacuum or implicit solvent simulations.
 
       pme-order:
         type: integer
@@ -144,107 +194,161 @@ energy_minimization:
         max: 8
         recommended: 4
         notes: >
-          Interpolation order for PME. 4 (cubic) is standard and
-          sufficient for most simulations. Higher values increase
-          accuracy but also computational cost.
+          PME interpolation order. 4 (cubic) is
+          standard and sufficient for EM.
 
       fourierspacing:
         type: float
         required: false
-        min: 0.08
-        max: 0.16
+        min: 0.1
+        max: 0.2
         recommended: 0.16
         unit: nm
         notes: >
-          Grid spacing for PME FFT. 0.16 nm is standard. Decrease to
-          0.10-0.12 nm for higher accuracy at increased cost.
+          Grid spacing for PME FFT. 0.16 nm is
+          standard. Smaller values increase accuracy
+          but also computational cost.
 
   vdw:
     parameters:
       vdwtype:
         type: enum
         required: true
-        allowed_values: [Cut-off, PME, Shift]
+        allowed_values:
+          - Cut-off
+          - PME
         recommended: Cut-off
         notes: >
-          Cut-off with dispersion correction is standard. VdW-PME
-          is more accurate but significantly more expensive and
-          required only for some force fields (e.g., Drude).
+          Cut-off with dispersion correction is
+          standard for most force fields.
 
       rvdw:
         type: float
         required: true
         min: 0.8
-        max: 1.4
+        max: 1.6
         recommended: 1.0
         unit: nm
         must_equal: rcoulomb
-        notes: >
-          Must equal rcoulomb when using Verlet cutoff scheme.
-          1.0 nm is standard for most force fields.
 
       vdw-modifier:
         type: enum
         required: false
-        allowed_values: [Potential-shift, Force-switch,
-                         Potential-switch, None]
+        allowed_values:
+          - Potential-shift
+          - Force-switch
+          - Potential-switch
+          - None
         recommended: Potential-shift
         notes: >
-          Potential-shift smoothly shifts VdW potential to zero at cutoff.
-          Required for energy conservation with Verlet scheme.
+          Potential-shift for AMBER/OPLS/GROMOS.
+          Force-switch for CHARMM36/36m.
 
       DispCorr:
         type: enum
         required: false
-        allowed_values: ["no", EnerPres, Ener]
+        allowed_values:
+          - "no"
+          - EnerPres
+          - Ener
         recommended: EnerPres
         notes: >
-          Long-range dispersion correction for energy and pressure.
-          EnerPres recommended for NPT simulations. Can be 'no' for EM
-          but EnerPres is harmless and consistent with later stages.
+          Long-range dispersion correction. EnerPres
+          for AMBER/OPLS/GROMOS. Must be "no" for
+          CHARMM36/36m (Force-switch handles LR VdW).
 
   temperature_coupling:
     parameters:
       tcoupl:
         type: enum
         required: true
-        allowed_values: ["no"]
-        forbidden_values: [berendsen, v-rescale,
-                           nose-hoover, andersen]
+        allowed_values:
+          - "no"
+        forbidden_values:
+          - berendsen
+          - v-rescale
+          - nose-hoover
+          - andersen
+        recommended: "no"
         notes: >
-          MUST be 'no' during energy minimization. Temperature coupling
-          is meaningless without dynamics and will cause GROMACS errors.
+          MUST be "no" during energy minimization.
+          Temperature coupling is meaningless and
+          harmful during EM.
 
   pressure_coupling:
     parameters:
       pcoupl:
         type: enum
         required: true
-        allowed_values: [no]
-        forbidden_values: [berendsen, parrinello-rahman,
-                           mttk, c-rescale]
+        allowed_values:
+          - "no"
+        forbidden_values:
+          - berendsen
+          - parrinello-rahman
+          - mttk
+          - c-rescale
+        recommended: "no"
         notes: >
-          MUST be 'no' during energy minimization. Pressure coupling
-          requires dynamics and is not applicable to minimization.
+          MUST be "no" during energy minimization.
+          Pressure coupling is meaningless and
+          harmful during EM.
 
   velocity_generation:
     parameters:
       gen-vel:
         type: enum
         required: true
-        allowed_values: ["no"]
-        forbidden_values: ["yes"]
+        allowed_values:
+          - "no"
+        forbidden_values:
+          - "yes"
+        recommended: "no"
         notes: >
-          MUST be 'no'. Velocities are irrelevant during minimization.
+          MUST be "no". Velocities are irrelevant
+          during energy minimization.
 
   constraints:
     parameters:
       constraints:
         type: enum
         required: true
-        allowed_values: [none]
+        allowed_values:
+          - none
+          - h-bonds
+          - all-bonds
+          - h-angles
+          - all-angles
         recommended: none
         notes: >
-          No constraints during energy minimization. Constraints interfere
-          with the minimization algorithm and should not be applied.
-          Bond lengths are optimized freely during EM.
+          "none" is recommended for EM — constraints
+          can interfere with minimization of strained
+          geometries. h-bonds is acceptable if the
+          starting structure is already reasonable.
+
+      constraint-algorithm:
+        type: enum
+        required: false
+        allowed_values:
+          - LINCS
+          - SHAKE
+        recommended: LINCS
+        notes: >
+          LINCS is preferred over SHAKE for stability
+          and performance.
+
+  position_restraints:
+    parameters:
+      define:
+        type: string
+        required: false
+        allowed_values:
+          - ""
+          - -DPOSRES
+          - -DPOSRES_HEAVY
+        recommended: -DPOSRES
+        notes: >
+          Position restraints are optional during EM
+          but recommended for solvated systems to
+          prevent solvent from entering the protein
+          core during minimization. Use -DPOSRES to
+          restrain all heavy atoms.

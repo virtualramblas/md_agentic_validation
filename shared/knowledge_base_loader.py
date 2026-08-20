@@ -39,6 +39,17 @@ class KnowledgeBase:
 
     All data is immutable after loading — the knowledge base
     is read-only at runtime.
+
+    Usage:
+        kb = KnowledgeBase(Path("knowledge_base"))
+        schema = kb.get_phase_schema(
+            SimulationPhase.ENERGY_MINIMIZATION
+        )
+        ff = kb.get_force_field("amber99sb-ildn")
+        mistakes = kb.get_common_mistakes()
+
+    Or via the singleton factory:
+        kb = get_knowledge_base("knowledge_base")
     """
 
     def __init__(self, knowledge_base_dir: Path) -> None:
@@ -49,18 +60,27 @@ class KnowledgeBase:
             f"Loading knowledge base from {self._kb_dir}"
         )
 
-        self._phases: dict[SimulationPhase, PhaseSchema] = {}
-        self._force_fields: dict[str, ForceFieldSchema] = {}
-        self._water_models: dict[str, WaterModelSchema] = {}
+        self._phases: dict[
+            SimulationPhase, PhaseSchema
+        ] = {}
+        self._force_fields: dict[
+            str, ForceFieldSchema
+        ] = {}
+        self._water_models: dict[
+            str, WaterModelSchema
+        ] = {}
         self._ion_parameters: dict[
             str, IonParameterSchema
         ] = {}
-        self._compatibility_matrix: CompatibilityMatrixSchema
+        self._compatibility_matrix: (
+            CompatibilityMatrixSchema
+        )
         self._common_mistakes: CommonMistakesRegistry
 
         self._load_all()
         logger.info(
-            "Knowledge base loaded and validated successfully"
+            "Knowledge base loaded and validated "
+            "successfully"
         )
 
     # ─────────────────────────────────────────
@@ -70,33 +90,67 @@ class KnowledgeBase:
     def get_phase_schema(
         self, phase: SimulationPhase
     ) -> PhaseSchema:
-        """Return the MDP parameter schema for a phase."""
+        """
+        Return the MDP parameter schema for a simulation
+        phase.
+
+        Args:
+            phase: One of the SimulationPhase enum values.
+
+        Raises:
+            KnowledgeBaseError: If the phase is not found.
+        """
         if phase not in self._phases:
             raise KnowledgeBaseError(
-                f"No schema found for phase: {phase.value}"
+                f"No schema found for phase: "
+                f"{phase.value}"
             )
         return self._phases[phase]
 
     def get_force_field(
         self, ff_name: str
     ) -> ForceFieldSchema:
-        """Return the force field definition by name."""
+        """
+        Return the force field definition by name.
+        Lookup is case-insensitive.
+
+        Args:
+            ff_name: Force field name, e.g.
+                     'amber99sb-ildn', 'charmm36m'.
+
+        Raises:
+            KnowledgeBaseError: If the force field is
+                not found.
+        """
         ff_name_lower = ff_name.lower()
         if ff_name_lower not in self._force_fields:
             raise KnowledgeBaseError(
                 f"Unknown force field: {ff_name}. "
-                f"Available: {list(self._force_fields.keys())}"
+                f"Available: "
+                f"{list(self._force_fields.keys())}"
             )
         return self._force_fields[ff_name_lower]
 
     def get_water_model(
         self, water_model_name: str
     ) -> WaterModelSchema:
-        """Return the water model definition by name."""
+        """
+        Return the water model definition by name.
+        Lookup is case-insensitive.
+
+        Args:
+            water_model_name: Water model name, e.g.
+                              'TIP3P', 'SPCE'.
+
+        Raises:
+            KnowledgeBaseError: If the water model is
+                not found.
+        """
         name_lower = water_model_name.lower()
         if name_lower not in self._water_models:
             raise KnowledgeBaseError(
-                f"Unknown water model: {water_model_name}. "
+                f"Unknown water model: "
+                f"{water_model_name}. "
                 f"Available: "
                 f"{list(self._water_models.keys())}"
             )
@@ -105,7 +159,18 @@ class KnowledgeBase:
     def get_ion_parameters(
         self, ion_param_name: str
     ) -> IonParameterSchema:
-        """Return ion parameter set definition by name."""
+        """
+        Return ion parameter set definition by name.
+        Lookup is case-insensitive.
+
+        Args:
+            ion_param_name: Ion parameter set name, e.g.
+                            'Joung-Cheatham', 'Aqvist'.
+
+        Raises:
+            KnowledgeBaseError: If the ion parameter set
+                is not found.
+        """
         name_lower = ion_param_name.lower()
         if name_lower not in self._ion_parameters:
             raise KnowledgeBaseError(
@@ -119,7 +184,8 @@ class KnowledgeBase:
     def get_compatibility_matrix(
         self,
     ) -> CompatibilityMatrixSchema:
-        """Return the full compatibility matrix."""
+        """Return the full force field compatibility
+        matrix."""
         return self._compatibility_matrix
 
     def get_common_mistakes(
@@ -136,6 +202,11 @@ class KnowledgeBase:
         """Return names of all known water models."""
         return list(self._water_models.keys())
 
+    def list_ion_parameter_sets(self) -> list[str]:
+        """Return names of all known ion parameter
+        sets."""
+        return list(self._ion_parameters.keys())
+
     def is_combination_forbidden(
         self,
         force_field: str,
@@ -145,13 +216,26 @@ class KnowledgeBase:
     ) -> tuple[bool, Optional[str]]:
         """
         Check if a parameter combination is explicitly
-        forbidden.
+        forbidden by the compatibility matrix.
+
+        A combination matches a forbidden entry only if
+        ALL specified fields in the forbidden entry match
+        the provided arguments. Fields not present in the
+        forbidden entry are ignored.
+
+        Args:
+            force_field:  Force field name to check.
+            water_model:  Water model name (optional).
+            disp_corr:    DispCorr value (optional).
+            vdw_modifier: VdW modifier value (optional).
 
         Returns:
-            (is_forbidden, reason_message)
+            (is_forbidden, reason_message) tuple.
+            reason_message is None if not forbidden.
         """
         for forbidden in (
-            self._compatibility_matrix.forbidden_combinations
+            self._compatibility_matrix
+            .forbidden_combinations
         ):
             combo = forbidden.combination
             match = True
@@ -190,11 +274,24 @@ class KnowledgeBase:
         return False, None
 
     # ─────────────────────────────────────────
-    # Private Loading Methods
+    # Private — Directory Validation
     # ─────────────────────────────────────────
 
     def _validate_directory_structure(self) -> None:
-        """Verify all required knowledge base files exist."""
+        """
+        Verify all required knowledge base files exist
+        before attempting to load any of them.
+
+        Raises:
+            KnowledgeBaseError: If any required file is
+                missing, listing all missing files at once.
+        """
+        if not self._kb_dir.exists():
+            raise KnowledgeBaseError(
+                f"Knowledge base directory does not "
+                f"exist: {self._kb_dir}"
+            )
+
         required_files = [
             "phases/energy_minimization.yaml",
             "phases/nvt_equilibration.yaml",
@@ -202,7 +299,8 @@ class KnowledgeBase:
             "phases/production_md.yaml",
             "forcefield_compatibility/force_fields.yaml",
             "forcefield_compatibility/water_models.yaml",
-            "forcefield_compatibility/ion_parameters.yaml",
+            "forcefield_compatibility/"
+            "ion_parameters.yaml",
             "forcefield_compatibility/"
             "compatibility_matrix.yaml",
             "box_solvation_rules/box_geometry.yaml",
@@ -220,17 +318,40 @@ class KnowledgeBase:
                 f"Missing knowledge base files: {missing}"
             )
 
+    # ─────────────────────────────────────────
+    # Private — YAML Loading
+    # ─────────────────────────────────────────
+
     def _load_yaml(
         self, relative_path: str
     ) -> dict[str, Any]:
-        """Load and parse a single YAML file."""
+        """
+        Load and parse a single YAML file.
+
+        Args:
+            relative_path: Path relative to kb_dir.
+
+        Returns:
+            Parsed YAML content as a dict.
+
+        Raises:
+            KnowledgeBaseError: On parse error, empty
+                file, or OS error.
+        """
         full_path = self._kb_dir / relative_path
         try:
-            with open(full_path, "r", encoding="utf-8") as f:
+            with open(
+                full_path, "r", encoding="utf-8"
+            ) as f:
                 data = yaml.safe_load(f)
             if data is None:
                 raise KnowledgeBaseError(
                     f"Empty YAML file: {full_path}"
+                )
+            if not isinstance(data, dict):
+                raise KnowledgeBaseError(
+                    f"YAML file does not contain a "
+                    f"mapping at top level: {full_path}"
                 )
             return data
         except yaml.YAMLError as e:
@@ -242,8 +363,15 @@ class KnowledgeBase:
                 f"Cannot read file {full_path}: {e}"
             ) from e
 
+    # ─────────────────────────────────────────
+    # Private — Section Loaders
+    # ─────────────────────────────────────────
+
     def _load_all(self) -> None:
-        """Load and validate all knowledge base sections."""
+        """
+        Load and validate all knowledge base sections
+        in dependency order.
+        """
         self._load_phases()
         self._load_force_fields()
         self._load_water_models()
@@ -252,8 +380,24 @@ class KnowledgeBase:
         self._load_common_mistakes()
 
     def _load_phases(self) -> None:
-        """Load all four simulation phase schemas."""
-        phase_files = {
+        """
+        Load all four simulation phase schemas.
+
+        Each phase YAML file has a single top-level key
+        matching the phase name (e.g. 'energy_minimization')
+        that wraps the actual schema content. This key is
+        unwrapped before passing to PhaseSchema.
+
+        File structure:
+            energy_minimization:    ← root key (unwrapped)
+              description: ...
+              run_control:
+                parameters: ...
+              ...
+        """
+        phase_files: dict[
+            SimulationPhase, tuple[str, str]
+        ] = {
             SimulationPhase.ENERGY_MINIMIZATION: (
                 "phases/energy_minimization.yaml",
                 "energy_minimization",
@@ -277,13 +421,15 @@ class KnowledgeBase:
             raw = self._load_yaml(filepath)
             if root_key not in raw:
                 raise KnowledgeBaseError(
-                    f"Expected root key '{root_key}' not "
-                    f"found in {filepath}. "
+                    f"Expected root key '{root_key}' "
+                    f"not found in {filepath}. "
                     f"Found keys: {list(raw.keys())}"
                 )
             data = raw[root_key]
             try:
-                self._phases[phase] = PhaseSchema(**data)
+                self._phases[phase] = (
+                    PhaseSchema(**data)
+                )
                 logger.debug(
                     f"Loaded phase schema: {phase.value}"
                 )
@@ -293,18 +439,36 @@ class KnowledgeBase:
                 ) from e
 
     def _load_force_fields(self) -> None:
-        """Load all force field definitions."""
+        """
+        Load all force field definitions.
+
+        The file groups force fields by family under keys
+        such as 'amber_family', 'charmm_family', etc.
+        Each family dict contains individual force field
+        entries keyed by their short name. All families
+        are flattened into a single dict.
+
+        File structure:
+            amber_family:           ← family key
+              description: ...      ← skipped
+              amber99sb-ildn:       ← FF entry
+                full_name: ...
+              amber14sb:            ← FF entry
+                full_name: ...
+            charmm_family:          ← family key
+              charmm36m:            ← FF entry
+                full_name: ...
+        """
         raw = self._load_yaml(
             "forcefield_compatibility/force_fields.yaml"
         )
-        # The file groups force fields by family.
-        # We flatten all families into a single dict.
         family_keys = [
             "amber_family",
             "charmm_family",
             "gromos_family",
             "opls_family",
         ]
+        # Keys within a family dict that are not FF entries
         non_ff_keys = {"description"}
 
         for family_key in family_keys:
@@ -318,35 +482,56 @@ class KnowledgeBase:
             family_data = raw[family_key]
             if not isinstance(family_data, dict):
                 continue
-            for ff_name, ff_data in family_data.items():
+            for ff_name, ff_data in (
+                family_data.items()
+            ):
                 if ff_name in non_ff_keys:
                     continue
                 if not isinstance(ff_data, dict):
                     continue
                 try:
-                    self._force_fields[ff_name.lower()] = (
-                        ForceFieldSchema(**ff_data)
-                    )
+                    self._force_fields[
+                        ff_name.lower()
+                    ] = ForceFieldSchema(**ff_data)
                     logger.debug(
                         f"Loaded force field: {ff_name}"
                     )
                 except ValidationError as e:
                     raise KnowledgeBaseError(
-                        f"Invalid force field schema for "
-                        f"{ff_name}: {e}"
+                        f"Invalid force field schema "
+                        f"for {ff_name}: {e}"
                     ) from e
 
     def _load_water_models(self) -> None:
-        """Load all water model definitions."""
+        """
+        Load all water model definitions.
+
+        The file groups water models by number of sites
+        under keys such as 'three_site_models',
+        'four_site_models', 'five_site_models'. Each
+        group dict contains individual water model entries.
+        All groups are flattened into a single dict.
+
+        File structure:
+            three_site_models:      ← group key
+              description: ...      ← skipped
+              TIP3P:                ← water model entry
+                sites: 3
+              SPCE:                 ← water model entry
+                sites: 3
+            four_site_models:       ← group key
+              TIP4P-EW:             ← water model entry
+                sites: 4
+        """
         raw = self._load_yaml(
             "forcefield_compatibility/water_models.yaml"
         )
-        # The file groups water models by number of sites.
         model_group_keys = [
             "three_site_models",
             "four_site_models",
             "five_site_models",
         ]
+        # Keys within a group dict that are not model entries
         non_model_keys = {
             "water_model_selection_guide",
             "water_structure_files",
@@ -375,31 +560,79 @@ class KnowledgeBase:
                         model_name.lower()
                     ] = WaterModelSchema(**model_data)
                     logger.debug(
-                        f"Loaded water model: {model_name}"
+                        f"Loaded water model: "
+                        f"{model_name}"
                     )
                 except ValidationError as e:
                     raise KnowledgeBaseError(
-                        f"Invalid water model schema for "
-                        f"{model_name}: {e}"
+                        f"Invalid water model schema "
+                        f"for {model_name}: {e}"
                     ) from e
 
     def _load_ion_parameters(self) -> None:
-        """Load all ion parameter set definitions."""
+        """
+        Load all ion parameter set definitions.
+
+        The file wraps all parameter set entries under a
+        'parameter_sets' key. Additional top-level keys
+        (ion_naming_conventions, ion_concentration_rules,
+        etc.) contain reference information used by tools
+        but are not loaded as Pydantic models here.
+
+        File structure:
+            description: ...        ← skipped
+            parameter_sets:         ← wrapper key
+              Joung-Cheatham:       ← ion param entry
+                reference: ...
+              Aqvist:               ← ion param entry
+                reference: ...
+            ion_naming_conventions: ← skipped
+              ...
+            ion_concentration_rules: ← skipped
+              ...
+        """
         raw = self._load_yaml(
             "forcefield_compatibility/ion_parameters.yaml"
         )
-        # The file has a flat structure with parameter set
-        # names as top-level keys, plus non-parameter sections.
+        # Top-level keys that are not parameter set entries
         non_param_keys = {
             "description",
+            "parameter_sets",
             "ion_naming_conventions",
             "ion_concentration_rules",
             "ion_placement_rules",
             "genion_protocol",
         }
-        for param_name, param_data in raw.items():
-            if param_name in non_param_keys:
-                continue
+
+        # Prefer the explicit parameter_sets block
+        if "parameter_sets" in raw:
+            param_data_source = raw["parameter_sets"]
+            logger.debug(
+                "Loading ion parameters from "
+                "'parameter_sets' block"
+            )
+        else:
+            # Fallback: treat all non-reserved top-level
+            # keys as parameter set entries
+            logger.warning(
+                "No 'parameter_sets' key found in "
+                "ion_parameters.yaml — falling back to "
+                "top-level key scan"
+            )
+            param_data_source = {
+                k: v for k, v in raw.items()
+                if k not in non_param_keys
+            }
+
+        if not isinstance(param_data_source, dict):
+            raise KnowledgeBaseError(
+                "ion_parameters.yaml: 'parameter_sets' "
+                "section is not a mapping"
+            )
+
+        for param_name, param_data in (
+            param_data_source.items()
+        ):
             if not isinstance(param_data, dict):
                 continue
             try:
@@ -416,12 +649,31 @@ class KnowledgeBase:
                 ) from e
 
     def _load_compatibility_matrix(self) -> None:
-        """Load the force field compatibility matrix."""
+        """
+        Load the force field compatibility matrix.
+
+        The file contains the matrix sections directly at
+        the top level alongside non-matrix reference
+        sections. Non-matrix keys are filtered out before
+        passing to CompatibilityMatrixSchema.
+
+        File structure:
+            description: ...              ← filtered out
+            protein_simulations:          ← matrix data
+              standard_folded_protein:
+                - force_field: ...
+            forbidden_combinations:       ← matrix data
+              - id: FC001
+                combination: ...
+            mdp_requirements_by_force_field: ← filtered
+              ...
+            force_field_selection_guide:  ← filtered
+              ...
+        """
         raw = self._load_yaml(
             "forcefield_compatibility/"
             "compatibility_matrix.yaml"
         )
-        # Filter out non-matrix sections.
         non_matrix_keys = {
             "description",
             "mdp_requirements_by_force_field",
@@ -435,22 +687,57 @@ class KnowledgeBase:
             self._compatibility_matrix = (
                 CompatibilityMatrixSchema(**matrix_data)
             )
-            logger.debug("Loaded compatibility matrix")
+            n_forbidden = len(
+                self._compatibility_matrix
+                .forbidden_combinations
+            )
+            logger.debug(
+                f"Loaded compatibility matrix with "
+                f"{n_forbidden} forbidden combinations"
+            )
         except ValidationError as e:
             raise KnowledgeBaseError(
-                f"Invalid compatibility matrix schema: {e}"
+                f"Invalid compatibility matrix "
+                f"schema: {e}"
             ) from e
 
     def _load_common_mistakes(self) -> None:
-        """Load the common mistakes registry."""
+        """
+        Load the common mistakes registry.
+
+        The file contains 'critical_errors' and 'warnings'
+        lists directly at the top level, plus a
+        'cross_phase_consistency_mistakes' dict whose
+        entries are flattened into the appropriate list
+        based on their severity field.
+
+        File structure:
+            description: ...
+            metadata: ...
+            critical_errors:          ← list of mistakes
+              - id: CM001
+                severity: ERROR
+                ...
+            warnings:                 ← list of mistakes
+              - id: CM004
+                severity: WARNING
+                ...
+            cross_phase_consistency_mistakes:
+              CC001:                  ← flattened into
+                severity: ERROR       ← critical_errors
+                ...
+        """
         raw = self._load_yaml("common_mistakes.yaml")
-        critical_errors = list(
+
+        critical_errors: list[dict[str, Any]] = list(
             raw.get("critical_errors", [])
         )
-        warnings = list(raw.get("warnings", []))
+        warnings: list[dict[str, Any]] = list(
+            raw.get("warnings", [])
+        )
 
         # Flatten cross-phase consistency mistakes into
-        # the appropriate lists based on their severity.
+        # the appropriate list based on their severity.
         cross_phase = raw.get(
             "cross_phase_consistency_mistakes", {}
         )
@@ -461,7 +748,8 @@ class KnowledgeBase:
                 if not isinstance(mistake_data, dict):
                     continue
                 if (
-                    mistake_data.get("severity") == "ERROR"
+                    mistake_data.get("severity")
+                    == "ERROR"
                 ):
                     critical_errors.append(mistake_data)
                 else:
@@ -475,11 +763,19 @@ class KnowledgeBase:
             self._common_mistakes = (
                 CommonMistakesRegistry(**mistakes_data)
             )
-            n_mistakes = len(
+            n_total = len(
                 self._common_mistakes.get_all()
             )
+            n_errors = len(
+                self._common_mistakes.critical_errors
+            )
+            n_warnings = len(
+                self._common_mistakes.warnings
+            )
             logger.debug(
-                f"Loaded {n_mistakes} common mistake rules"
+                f"Loaded {n_total} common mistake rules "
+                f"({n_errors} errors, "
+                f"{n_warnings} warnings)"
             )
         except ValidationError as e:
             raise KnowledgeBaseError(
@@ -499,7 +795,21 @@ def get_knowledge_base(
     Return the singleton KnowledgeBase instance.
 
     Uses lru_cache to ensure the knowledge base is loaded
-    only once per process. Pass knowledge_base_dir as a
-    string (not Path) to make it hashable for lru_cache.
+    only once per process. The directory path is passed as
+    a string (not Path) to satisfy lru_cache's requirement
+    for hashable arguments.
+
+    Args:
+        knowledge_base_dir: Path to the knowledge base
+            directory as a string. Defaults to
+            'knowledge_base' relative to the working dir.
+
+    Returns:
+        The loaded and validated KnowledgeBase instance.
+
+    Example:
+        kb = get_knowledge_base()
+        kb = get_knowledge_base("/abs/path/to/kb")
+        kb = get_knowledge_base("custom_kb_dir")
     """
     return KnowledgeBase(Path(knowledge_base_dir))

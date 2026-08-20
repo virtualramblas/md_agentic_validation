@@ -1,140 +1,160 @@
 description: >
-  Quick-reference compatibility matrix for the most common force field,
-  water model, and ion parameter combinations. Used by the Force Field
-  Consistency Checker tool to validate proposed simulation setups and
-  recommend corrections. Rating scale: RECOMMENDED / ACCEPTABLE /
-  NOT_RECOMMENDED / FORBIDDEN.
+  Quick-reference compatibility matrix for the most
+  common force field, water model, and ion parameter
+  combinations. Used by the Force Field Consistency
+  Checker tool to validate proposed simulation setups
+  and recommend corrections.
+  Rating scale:
+    RECOMMENDED     — validated, widely used, safe default
+    ACCEPTABLE      — valid but less optimal
+    NOT_RECOMMENDED — technically possible but discouraged
+    FORBIDDEN       — produces incorrect results, must not use
+
 
 protein_simulations:
 
   standard_folded_protein:
     description: >
-      Globular, well-folded protein in explicit aqueous solvent.
-      The most common simulation setup in computational biophysics.
+      Globular, well-folded protein in explicit aqueous
+      solvent. The most common simulation setup in
+      computational biophysics.
     top_choices:
-
       - force_field: amber99sb-ildn
         water: TIP3P
         ions: Joung-Cheatham (TIP3P variant)
         rating: RECOMMENDED
         notes: >
-          Most widely used combination. Extensive validation in
-          literature. Good balance of accuracy and computational
-          speed. Safe default choice for standard protein simulations.
+          Most widely used combination. Extensive
+          validation in literature. Good balance of
+          accuracy and computational speed. Safe
+          default choice for standard protein
+          simulations.
 
       - force_field: amber14sb
         water: TIP3P
         ions: Joung-Cheatham (TIP3P variant)
         rating: RECOMMENDED
         notes: >
-          Current best AMBER option for folded proteins. Better
-          helix-coil balance than ff99SB-ILDN. Preferred for new
-          projects using AMBER family.
+          Current best AMBER option for folded
+          proteins. Better helix-coil balance than
+          ff99SB-ILDN. Preferred for new projects
+          using AMBER family.
 
       - force_field: amber14sb
         water: TIP4P-EW
         ions: Joung-Cheatham (TIP4P-EW variant)
         rating: RECOMMENDED
         notes: >
-          Higher accuracy water model. Better water diffusion and
-          density than TIP3P. Use when water properties matter or
-          for thermodynamic calculations.
+          Higher accuracy water model. Better water
+          diffusion and density than TIP3P. Use when
+          water properties matter or for
+          thermodynamic calculations.
 
       - force_field: charmm36m
         water: TIP3P-CHARMM
         ions: CHARMM36 ions
         rating: RECOMMENDED
         notes: >
-          Excellent for folded proteins. Mandatory CHARMM-TIP3P —
-          not interchangeable with standard TIP3P. Remember different
-          MDP cutoff settings (rcoulomb=rvdw=1.2 nm, Force-switch,
-          no DispCorr).
+          Excellent for folded proteins. Mandatory
+          CHARMM-TIP3P — not interchangeable with
+          standard TIP3P. Remember different MDP
+          cutoff settings (rcoulomb=rvdw=1.2 nm,
+          Force-switch, no DispCorr).
 
       - force_field: gromos54a7
         water: SPCE
         ions: Aqvist (SPCE variant)
         rating: ACCEPTABLE
         notes: >
-          United-atom force field — faster but less detailed than
-          all-atom alternatives. Acceptable for large systems where
-          computational speed is critical. Less commonly used in
-          new projects.
+          United-atom force field — faster but less
+          detailed than all-atom alternatives.
+          Acceptable for large systems where
+          computational speed is critical. Less
+          commonly used in new projects.
 
       - force_field: oplsaal
         water: TIP4P
         ions: Joung-Cheatham (TIP4P-EW variant)
         rating: ACCEPTABLE
         notes: >
-          Good for systems combining proteins with organic co-solvents
-          or small molecules. Less validated than AMBER/CHARMM for
-          pure protein simulations.
+          Good for systems combining proteins with
+          organic co-solvents or small molecules.
+          Less validated than AMBER/CHARMM for pure
+          protein simulations.
 
       - force_field: amber99sb-ildn
         water: TIP4P-2005
         ions: Joung-Cheatham (TIP4P-EW variant)
         rating: ACCEPTABLE
         notes: >
-          Better water properties than TIP3P. Acceptable combination
-          though not specifically parameterized together. Use when
-          accurate water structure is important.
+          Better water properties than TIP3P.
+          Acceptable combination though not
+          specifically parameterized together. Use
+          when accurate water structure is important.
 
   intrinsically_disordered_proteins:
     description: >
-      Proteins lacking stable tertiary structure. Require water models
-      that correctly reproduce the expanded ensemble of conformations.
+      Proteins lacking stable tertiary structure.
+      Require water models that correctly reproduce
+      the expanded ensemble of conformations.
       Standard TIP3P over-compacts IDPs.
     top_choices:
-
       - force_field: charmm36m
         water: TIP4P-2005
         ions: CHARMM36 ions
         rating: RECOMMENDED
         notes: >
-          Best validated combination for IDPs. TIP4P-2005 gives
-          better IDP ensemble than CHARMM-TIP3P with CHARMM36m.
-          Good reproduction of experimental SAXS and NMR data.
+          Best validated combination for IDPs.
+          TIP4P-2005 gives better IDP ensemble than
+          CHARMM-TIP3P with CHARMM36m. Good
+          reproduction of experimental SAXS and
+          NMR data.
 
       - force_field: amber14sb
         water: TIP4P-D
         ions: Joung-Cheatham (TIP4P-EW variant)
         rating: RECOMMENDED
         notes: >
-          TIP4P-D specifically designed for IDPs with AMBER force
-          fields. Good reproduction of experimental SAXS and NMR
-          data for disordered proteins.
+          TIP4P-D specifically designed for IDPs
+          with AMBER force fields. Good reproduction
+          of experimental SAXS and NMR data for
+          disordered proteins.
 
       - force_field: charmm36m
         water: TIP3P-CHARMM
         ions: CHARMM36 ions
         rating: ACCEPTABLE
         notes: >
-          Acceptable for IDPs but TIP4P-2005 gives better ensemble
-          properties. Use when computational speed is prioritized.
+          Acceptable for IDPs but TIP4P-2005 gives
+          better ensemble properties. Use when
+          computational speed is prioritized.
 
       - force_field: amber99sb-ildn
         water: TIP3P
         ions: Joung-Cheatham (TIP3P variant)
         rating: NOT_RECOMMENDED
         notes: >
-          Over-compacts IDPs. Avoid for disordered systems.
-          Use CHARMM36m + TIP4P-2005 or AMBER ff14SB + TIP4P-D.
+          Over-compacts IDPs. Avoid for disordered
+          systems. Use CHARMM36m + TIP4P-2005 or
+          AMBER ff14SB + TIP4P-D instead.
 
   membrane_proteins:
     description: >
-      Proteins embedded in lipid bilayers. Require force fields with
-      validated lipid parameters and semiisotropic pressure coupling.
+      Proteins embedded in lipid bilayers. Require
+      force fields with validated lipid parameters
+      and semiisotropic pressure coupling.
     top_choices:
-
       - force_field: charmm36m
         water: TIP3P-CHARMM
         lipids: CHARMM36 lipid parameters
         ions: CHARMM36 ions
         rating: RECOMMENDED
         notes: >
-          Gold standard for membrane protein simulations. CHARMM36
-          has the most comprehensive and validated lipid parameter
-          set available. Use semiisotropic pressure coupling
-          (pcoupltype = semiisotropic). CHARMM-GUI is the recommended
+          Gold standard for membrane protein
+          simulations. CHARMM36 has the most
+          comprehensive and validated lipid parameter
+          set available. Use semiisotropic pressure
+          coupling. CHARMM-GUI is the recommended
           setup tool for membrane systems.
 
       - force_field: amber14sb
@@ -143,9 +163,10 @@ protein_simulations:
         ions: Joung-Cheatham (TIP3P variant)
         rating: ACCEPTABLE
         notes: >
-          Acceptable alternative to CHARMM36 for membrane systems.
-          LIPID17 parameters required for lipids. Less validated
-          than CHARMM36 for membrane protein simulations.
+          Acceptable alternative to CHARMM36 for
+          membrane systems. LIPID17 parameters
+          required for lipids. Less validated than
+          CHARMM36 for membrane protein simulations.
 
       - force_field: amber14sb
         water: TIP3P
@@ -153,15 +174,17 @@ protein_simulations:
         ions: Joung-Cheatham (TIP3P variant)
         rating: ACCEPTABLE
         notes: >
-          Slipids (Stockholm lipids) are an alternative AMBER-compatible
-          lipid parameter set. Well-validated for common phospholipids.
+          Slipids (Stockholm lipids) are an
+          alternative AMBER-compatible lipid
+          parameter set. Well-validated for common
+          phospholipids.
 
   protein_ligand:
     description: >
-      Protein in complex with a small molecule ligand. Requires
-      compatible small molecule force field parameterization.
+      Protein in complex with a small molecule
+      ligand. Requires compatible small molecule
+      force field parameterization.
     top_choices:
-
       - force_field: amber14sb
         small_molecule_ff: GAFF2
         water: TIP3P
@@ -169,9 +192,10 @@ protein_simulations:
         charge_method: RESP
         rating: RECOMMENDED
         notes: >
-          Most common combination for drug discovery MD simulations.
-          Requires antechamber or acpype for ligand parameterization.
-          GAFF2 preferred over GAFF for new projects.
+          Most common combination for drug discovery
+          MD simulations. Requires antechamber or
+          acpype for ligand parameterization. GAFF2
+          preferred over GAFF for new projects.
 
       - force_field: charmm36m
         small_molecule_ff: CGenFF
@@ -179,10 +203,11 @@ protein_simulations:
         ions: CHARMM36 ions
         rating: RECOMMENDED
         notes: >
-          Excellent alternative for protein-ligand simulations.
-          CGenFF penalty scores must be checked — scores above 10
-          require manual review, scores above 50 require QM-based
-          reparameterization.
+          Excellent alternative for protein-ligand
+          simulations. CGenFF penalty scores must
+          be checked — scores above 10 require
+          manual review, scores above 50 require
+          QM-based reparameterization.
 
       - force_field: amber99sb-ildn
         small_molecule_ff: GAFF
@@ -191,8 +216,9 @@ protein_simulations:
         charge_method: RESP
         rating: ACCEPTABLE
         notes: >
-          Acceptable but prefer ff14SB + GAFF2 for new projects.
-          GAFF is less accurate than GAFF2 for torsion parameters.
+          Acceptable but prefer ff14SB + GAFF2 for
+          new projects. GAFF is less accurate than
+          GAFF2 for torsion parameters.
 
       - force_field: oplsaal
         small_molecule_ff: OPLS-AA built-in
@@ -200,16 +226,18 @@ protein_simulations:
         ions: Joung-Cheatham (TIP4P-EW variant)
         rating: ACCEPTABLE
         notes: >
-          OPLS-AA has many small molecule parameters built-in,
-          reducing the need for external parameterization tools.
-          Good choice when the ligand is a common organic scaffold.
+          OPLS-AA has many small molecule parameters
+          built-in, reducing the need for external
+          parameterization tools. Good choice when
+          the ligand is a common organic scaffold.
 
   nucleic_acids:
     description: >
-      DNA or RNA simulations, alone or in complex with proteins.
-      Require specialized nucleic acid parameter sets.
+      DNA or RNA simulations, alone or in complex
+      with proteins. Require specialized nucleic
+      acid parameter sets and higher ion
+      concentrations.
     top_choices:
-
       - force_field: amber14sb
         nucleic_acid_params: OL3
         applicable_to: RNA
@@ -217,10 +245,10 @@ protein_simulations:
         ions: Joung-Cheatham (TIP3P variant)
         rating: RECOMMENDED
         notes: >
-          OL3 for RNA. Well-validated against NMR and crystallographic
-          data. Higher ion concentration required (at least 0.15 M
-          KCl or NaCl for nucleic acid stability). Add Mg2+ for RNA
-          folding studies.
+          OL3 for RNA. Well-validated against NMR
+          and crystallographic data. Higher ion
+          concentration required. Add Mg2+ for
+          RNA folding studies.
 
       - force_field: amber14sb
         nucleic_acid_params: BSC1
@@ -229,8 +257,9 @@ protein_simulations:
         ions: Joung-Cheatham (TIP3P variant)
         rating: RECOMMENDED
         notes: >
-          BSC1 for DNA. Current best AMBER DNA parameter set.
-          Well-validated for B-form DNA duplexes.
+          BSC1 for DNA. Current best AMBER DNA
+          parameter set. Well-validated for B-form
+          DNA duplexes.
 
       - force_field: charmm36
         nucleic_acid_params: CHARMM36 built-in
@@ -239,25 +268,25 @@ protein_simulations:
         ions: CHARMM36 ions
         rating: RECOMMENDED
         notes: >
-          CHARMM36 has comprehensive built-in nucleic acid parameters.
-          Well-validated for both DNA and RNA. Good alternative to
-          AMBER for nucleic acid simulations.
+          CHARMM36 has comprehensive built-in
+          nucleic acid parameters. Well-validated
+          for both DNA and RNA.
 
   pure_small_molecule:
     description: >
-      Organic solvent, drug molecule, or small organic compound
-      without a protein component.
+      Organic solvent, drug molecule, or small
+      organic compound without a protein component.
     top_choices:
-
       - force_field: oplsaal
         water: TIP4P
         ions: Joung-Cheatham (TIP4P-EW variant)
         rating: RECOMMENDED
         notes: >
-          OPLS-AA/L was originally developed for organic liquids and
-          has excellent parameters for many small organic molecules
-          without requiring external parameterization tools. Best
-          choice for pure organic solvent or small molecule studies.
+          OPLS-AA/L was originally developed for
+          organic liquids and has excellent
+          parameters for many small organic
+          molecules without requiring external
+          parameterization tools.
 
       - force_field: amber14sb
         small_molecule_ff: GAFF2
@@ -265,36 +294,33 @@ protein_simulations:
         ions: Joung-Cheatham (TIP3P variant)
         rating: ACCEPTABLE
         notes: >
-          Acceptable alternative when AMBER ecosystem is preferred
-          or when the molecule will later be combined with a protein.
+          Acceptable alternative when AMBER
+          ecosystem is preferred or when the
+          molecule will later be combined with
+          a protein.
 
 
 forbidden_combinations:
-  description: >
-    Combinations that are explicitly forbidden due to physical
-    inconsistency, known artifacts, or fundamental incompatibility.
-    These must be detected and blocked by the Force Field Checker tool.
-
   - id: FC001
     combination:
       force_field: charmm36
       water: TIP3P
-      note: standard TIP3P without LJ on hydrogen
     reason: >
-      FORBIDDEN: Standard TIP3P lacks Lennard-Jones parameters on
-      hydrogen atoms that CHARMM36 requires for correct non-bonded
-      interactions. Will give wrong water structure and protein-water
-      interactions. Must use CHARMM-modified TIP3P instead.
+      FORBIDDEN: Standard TIP3P lacks Lennard-Jones
+      parameters on hydrogen atoms that CHARMM36
+      requires for correct non-bonded interactions.
+      Will give wrong water structure and
+      protein-water interactions. Must use
+      CHARMM-modified TIP3P instead.
     severity: ERROR
 
   - id: FC002
     combination:
       force_field: charmm36m
       water: TIP3P
-      note: standard TIP3P without LJ on hydrogen
     reason: >
-      FORBIDDEN: Same as FC001. CHARMM36m inherits the same
-      requirement for CHARMM-modified TIP3P.
+      FORBIDDEN: Same as FC001. CHARMM36m inherits
+      the same requirement for CHARMM-modified TIP3P.
     severity: ERROR
 
   - id: FC003
@@ -302,10 +328,11 @@ forbidden_combinations:
       force_field: charmm36
       DispCorr: EnerPres
     reason: >
-      FORBIDDEN: CHARMM36 uses Force-switch VdW modifier which
-      already handles long-range VdW corrections. Adding DispCorr
-      double-counts the long-range correction and gives wrong
-      energies and pressures.
+      FORBIDDEN: CHARMM36 uses Force-switch VdW
+      modifier which already handles long-range VdW
+      corrections. Adding DispCorr double-counts the
+      long-range correction and gives wrong energies
+      and pressures.
     severity: ERROR
 
   - id: FC004
@@ -313,8 +340,8 @@ forbidden_combinations:
       force_field: charmm36m
       DispCorr: EnerPres
     reason: >
-      FORBIDDEN: Same as FC003. CHARMM36m requires the same
-      cutoff treatment as CHARMM36.
+      FORBIDDEN: Same as FC003. CHARMM36m requires
+      the same cutoff treatment as CHARMM36.
     severity: ERROR
 
   - id: FC005
@@ -323,9 +350,10 @@ forbidden_combinations:
       ions: Aqvist
       water: TIP3P
     reason: >
-      FORBIDDEN: Aqvist ion parameters were parameterized for SPC
-      water. Using with TIP3P gives wrong ion hydration free energies
-      and incorrect ion-protein interactions.
+      FORBIDDEN: Aqvist ion parameters were
+      parameterized for SPC water. Using with TIP3P
+      gives wrong ion hydration free energies and
+      incorrect ion-protein interactions.
     severity: ERROR
 
   - id: FC006
@@ -334,27 +362,30 @@ forbidden_combinations:
       ions: Aqvist
       water: TIP3P
     reason: >
-      FORBIDDEN: Same as FC005. Aqvist ions must not be used with
-      TIP3P water regardless of AMBER force field version.
+      FORBIDDEN: Same as FC005. Aqvist ions must
+      not be used with TIP3P water regardless of
+      AMBER force field version.
     severity: ERROR
 
   - id: FC007
     combination:
       force_field: amber99sb-ildn
-      vdw_modifier: Force-switch
+      vdw-modifier: Force-switch
     reason: >
-      NOT RECOMMENDED: Force-switch VdW modifier is specific to
-      CHARMM force fields. AMBER uses Potential-shift. Mixing
-      gives inconsistent VdW treatment and wrong energies.
+      NOT RECOMMENDED: Force-switch VdW modifier
+      is specific to CHARMM force fields. AMBER
+      uses Potential-shift. Mixing gives
+      inconsistent VdW treatment and wrong energies.
     severity: WARNING
 
   - id: FC008
     combination:
       force_field: amber14sb
-      vdw_modifier: Force-switch
+      vdw-modifier: Force-switch
     reason: >
-      NOT RECOMMENDED: Same as FC007. AMBER force fields require
-      Potential-shift VdW modifier, not Force-switch.
+      NOT RECOMMENDED: Same as FC007. AMBER force
+      fields require Potential-shift VdW modifier,
+      not Force-switch.
     severity: WARNING
 
   - id: FC009
@@ -362,9 +393,10 @@ forbidden_combinations:
       force_field: gromos54a7
       water: TIP3P
     reason: >
-      NOT RECOMMENDED: GROMOS force fields were parameterized with
-      SPC or SPC/E water. TIP3P gives inconsistent water-protein
-      interactions with GROMOS parameters.
+      NOT RECOMMENDED: GROMOS force fields were
+      parameterized with SPC or SPC/E water. TIP3P
+      gives inconsistent water-protein interactions
+      with GROMOS parameters.
     severity: WARNING
 
   - id: FC010
@@ -372,27 +404,28 @@ forbidden_combinations:
       force_field: gromos53a6
       water: TIP3P
     reason: >
-      NOT RECOMMENDED: Same as FC009. Use SPC or SPC/E with all
-      GROMOS force field variants.
+      NOT RECOMMENDED: Same as FC009. Use SPC or
+      SPC/E with all GROMOS force field variants.
     severity: WARNING
 
   - id: FC011
     combination:
       force_field: charmm36
-      rcoulomb: 1.0
+      rcoulomb: "1.0"
     reason: >
-      NOT RECOMMENDED: CHARMM36 requires rcoulomb = 1.2 nm.
-      Using 1.0 nm is inconsistent with the force field
-      parameterization and gives wrong energetics.
+      NOT RECOMMENDED: CHARMM36 requires rcoulomb
+      = 1.2 nm. Using 1.0 nm is inconsistent with
+      the force field parameterization and gives
+      wrong energetics.
     severity: WARNING
 
   - id: FC012
     combination:
       force_field: charmm36m
-      rcoulomb: 1.0
+      rcoulomb: "1.0"
     reason: >
-      NOT RECOMMENDED: Same as FC011. CHARMM36m requires
-      rcoulomb = rvdw = 1.2 nm.
+      NOT RECOMMENDED: Same as FC011. CHARMM36m
+      requires rcoulomb = rvdw = 1.2 nm.
     severity: WARNING
 
   - id: FC013
@@ -400,9 +433,11 @@ forbidden_combinations:
       small_molecule_ff: GAFF
       protein_ff: charmm36m
     reason: >
-      NOT RECOMMENDED: GAFF is an AMBER-family small molecule force
-      field and is not designed for use with CHARMM protein force
-      fields. Use CGenFF for small molecules with CHARMM36/36m.
+      NOT RECOMMENDED: GAFF is an AMBER-family
+      small molecule force field and is not
+      designed for use with CHARMM protein force
+      fields. Use CGenFF for small molecules with
+      CHARMM36/36m.
     severity: WARNING
 
   - id: FC014
@@ -410,9 +445,11 @@ forbidden_combinations:
       small_molecule_ff: CGenFF
       protein_ff: amber14sb
     reason: >
-      NOT RECOMMENDED: CGenFF is a CHARMM-family small molecule
-      force field and is not designed for use with AMBER protein
-      force fields. Use GAFF2 for small molecules with AMBER ff14SB.
+      NOT RECOMMENDED: CGenFF is a CHARMM-family
+      small molecule force field and is not
+      designed for use with AMBER protein force
+      fields. Use GAFF2 for small molecules with
+      AMBER ff14SB.
     severity: WARNING
 
   - id: FC015
@@ -420,9 +457,10 @@ forbidden_combinations:
       ions: Joung-Cheatham (TIP3P variant)
       water: TIP4P-EW
     reason: >
-      FORBIDDEN: Joung-Cheatham TIP3P variant parameterized for
-      TIP3P water. Using with TIP4P-EW gives wrong ion hydration.
-      Use Joung-Cheatham TIP4P-EW variant instead.
+      FORBIDDEN: Joung-Cheatham TIP3P variant
+      parameterized for TIP3P water. Using with
+      TIP4P-EW gives wrong ion hydration. Use
+      Joung-Cheatham TIP4P-EW variant instead.
     severity: ERROR
 
   - id: FC016
@@ -430,9 +468,10 @@ forbidden_combinations:
       ions: Joung-Cheatham (TIP4P-EW variant)
       water: TIP3P
     reason: >
-      FORBIDDEN: Joung-Cheatham TIP4P-EW variant parameterized for
-      TIP4P-EW water. Using with TIP3P gives wrong ion hydration.
-      Use Joung-Cheatham TIP3P variant instead.
+      FORBIDDEN: Joung-Cheatham TIP4P-EW variant
+      parameterized for TIP4P-EW water. Using with
+      TIP3P gives wrong ion hydration. Use
+      Joung-Cheatham TIP3P variant instead.
     severity: ERROR
 
   - id: FC017
@@ -440,10 +479,11 @@ forbidden_combinations:
       force_field: charmm36
       ions: Joung-Cheatham (TIP3P variant)
     reason: >
-      NOT RECOMMENDED: CHARMM36 should use CHARMM-specific ion
-      parameters, not Joung-Cheatham. CHARMM ions are parameterized
-      consistently with CHARMM-TIP3P water and CHARMM non-bonded
-      interactions.
+      NOT RECOMMENDED: CHARMM36 should use
+      CHARMM-specific ion parameters, not
+      Joung-Cheatham. CHARMM ions are parameterized
+      consistently with CHARMM-TIP3P water and
+      CHARMM non-bonded interactions.
     severity: WARNING
 
   - id: FC018
@@ -451,22 +491,25 @@ forbidden_combinations:
       force_field: charmm36m
       ions: Joung-Cheatham (TIP3P variant)
     reason: >
-      NOT RECOMMENDED: Same as FC017. Use CHARMM36 ion parameters
-      with CHARMM36m force field.
+      NOT RECOMMENDED: Same as FC017. Use CHARMM36
+      ion parameters with CHARMM36m force field.
     severity: WARNING
 
 
 mdp_requirements_by_force_field:
   description: >
-    Force-field-specific MDP parameter requirements. These override
-    the general MDP schema defaults and must be enforced by the
-    Force Field Checker tool in addition to the Schema Checker.
+    Force-field-specific MDP parameter requirements.
+    These settings must be applied consistently
+    across all simulation phases (EM, NVT, NPT,
+    production). Mixing settings from different
+    force field families produces incorrect results.
 
   amber_family:
     applies_to:
       - amber99sb
       - amber99sb-ildn
       - amber14sb
+      - amber03
     required_settings:
       rcoulomb: 1.0
       rvdw: 1.0
@@ -477,6 +520,11 @@ mdp_requirements_by_force_field:
     forbidden_settings:
       vdw-modifier: Force-switch
       DispCorr: "no"
+    notes: >
+      AMBER force fields require 1.0 nm cutoffs
+      and Potential-shift VdW modifier. DispCorr
+      = EnerPres is critical for correct density
+      and pressure in NPT simulations.
 
   charmm_family:
     applies_to:
@@ -493,13 +541,13 @@ mdp_requirements_by_force_field:
     forbidden_settings:
       vdw-modifier: Potential-shift
       DispCorr: EnerPres
-    critical_note: >
-      CHARMM force fields use a fundamentally different VdW treatment
-      than AMBER or GROMOS. The Force-switch modifier with rvdw-switch
-      at 1.0 nm and rvdw at 1.2 nm is mandatory. DispCorr must be
-      disabled because the force-switch already accounts for long-range
-      VdW. Failure to apply these settings is one of the most common
-      and impactful errors in CHARMM simulations with GROMACS.
+    notes: >
+      CHARMM force fields require 1.2 nm cutoffs,
+      Force-switch VdW modifier with switch at
+      1.0 nm, and NO dispersion correction.
+      These settings are fundamentally different
+      from AMBER — never mix CHARMM and AMBER
+      MDP settings.
 
   gromos_family:
     applies_to:
@@ -513,10 +561,9 @@ mdp_requirements_by_force_field:
       vdwtype: Cut-off
       DispCorr: EnerPres
     notes: >
-      GROMOS traditionally uses longer cutoffs (1.4 nm) than AMBER
-      or CHARMM. Some modern GROMOS protocols use 1.0-1.2 nm with
-      PME — always check the original parameterization reference
-      for the specific system being studied.
+      GROMOS force fields use longer cutoffs
+      (1.4 nm) than AMBER or CHARMM. DispCorr
+      is required for correct density.
 
   opls_family:
     applies_to:
@@ -530,18 +577,19 @@ mdp_requirements_by_force_field:
       vdw-modifier: Potential-shift
       DispCorr: EnerPres
     notes: >
-      OPLS uses the same cutoff scheme as AMBER. 1.0 nm cutoffs
-      with PME electrostatics and Potential-shift VdW modifier.
+      OPLS-AA uses the same cutoff settings as
+      AMBER. DispCorr is required for correct
+      density and pressure in NPT simulations.
 
 
 force_field_selection_guide:
   description: >
-    Decision logic used by the Force Field Checker tool to recommend
-    or validate force field choices based on system composition
-    and scientific goals.
+    Decision logic for force field selection based
+    on the primary system component and scientific
+    requirements.
 
   step_1_identify_primary_component:
-    question: "What is the primary component of the system?"
+    question: "What is the primary component?"
     options:
       protein_only:
         goto: step_2_protein
@@ -555,55 +603,61 @@ force_field_selection_guide:
         goto: step_2_small_molecule
 
   step_2_protein:
-    question: "Is the protein folded or intrinsically disordered?"
     folded:
       primary_recommendation: amber14sb + TIP3P
       alternative: charmm36m + TIP3P-CHARMM
-      budget_option: gromos54a7 + SPCE
+      notes: >
+        Both are excellent choices. AMBER is more
+        widely used in the literature. CHARMM36m
+        is preferred for IDPs and disordered
+        regions.
     disordered_or_IDP:
-      primary_recommendation: charmm36m + TIP4P-2005
+      primary_recommendation: >
+        charmm36m + TIP4P-2005
       alternative: amber14sb + TIP4P-D
-      avoid:
-        - amber99sb-ildn + TIP3P
+      notes: >
+        Standard TIP3P over-compacts IDPs. Use
+        TIP4P-2005 or TIP4P-D for disordered
+        systems.
 
   step_2_protein_ligand:
-    question: "What is the priority — speed or accuracy?"
     accuracy:
       recommendation: amber14sb + GAFF2 + TIP3P
-      alternative: charmm36m + CGenFF + TIP3P-CHARMM
+      alternative: >
+        charmm36m + CGenFF + TIP3P-CHARMM
     speed:
-      recommendation: amber99sb-ildn + GAFF + TIP3P
-    ligand_validation:
-      if_using_cgenff:
-        check: penalty_score < 50
-        warning_threshold: 10
-        error_threshold: 50
-      if_using_gaff2:
-        check: antechamber_completed_without_errors
+      recommendation: >
+        amber99sb-ildn + GAFF + TIP3P
+    notes: >
+      Check CGenFF penalty scores carefully.
+      Scores above 50 require QM reparameterization
+      before use.
 
   step_2_membrane:
-    primary_recommendation: charmm36m + TIP3P-CHARMM + CHARMM36 lipids
+    primary_recommendation: >
+      charmm36m + TIP3P-CHARMM + CHARMM36 lipids
     alternative: amber14sb + LIPID17 + TIP3P
-    mdp_note: >
-      Remember semiisotropic pressure coupling for membrane systems.
-      pcoupltype = semiisotropic with two ref-p and compressibility values.
+    notes: >
+      CHARMM36 has the most comprehensive lipid
+      parameter set. Use CHARMM-GUI for system
+      setup. Use semiisotropic pressure coupling.
 
   step_2_nucleic:
     DNA:
-      recommendation: amber14sb + BSC1 + TIP3P + Joung-Cheatham
+      recommendation: amber14sb + BSC1 + TIP3P
+      notes: >
+        BSC1 is the current best DNA parameter set.
     RNA:
-      recommendation: amber14sb + OL3 + TIP3P + Joung-Cheatham
-    DNA_protein_complex:
-      recommendation: amber14sb + BSC1 + TIP3P + Joung-Cheatham
-    ion_note: >
-      Increase ion concentration for nucleic acid simulations.
-      Minimum 0.15 M KCl or NaCl. Mg2+ may be required for RNA.
+      recommendation: amber14sb + OL3 + TIP3P
+      notes: >
+        Add 2-5 mM MgCl2 for RNA folding studies.
+        Use Li-Merz 12-6-4 for Mg2+ parameters.
 
   step_2_small_molecule:
-    organic_solvent_or_drug:
-      recommendation: oplsaal + TIP4P
-      alternative: amber14sb + GAFF2 + TIP3P
-    note: >
-      OPLS-AA/L was originally developed for organic liquids and
-      has excellent parameters for many small organic molecules
-      without requiring external parameterization tools.
+    recommendation: oplsaal + TIP4P
+    alternative: amber14sb + GAFF2 + TIP3P
+    notes: >
+      OPLS-AA has many built-in small molecule
+      parameters. Use GAFF2 when the molecule
+      will later be combined with an AMBER
+      protein force field.

@@ -56,6 +56,63 @@ class BoxType(str, Enum):
 
 
 # ─────────────────────────────────────────────
+# Boolean coercion utilities
+# ─────────────────────────────────────────────
+
+_BOOL_TO_STR: dict[bool, str] = {
+    True: "yes",
+    False: "no",
+}
+
+
+def _coerce_bools_in_dict(data: Any) -> Any:
+    """
+    Recursively walk a nested dict/list structure and
+    coerce all boolean values to their string equivalents
+    ('yes' for True, 'no' for False).
+
+    This is necessary because PyYAML's safe_load parses
+    bare YAML boolean tokens as Python booleans:
+
+      YAML token   Python value   Intended string
+      ----------   ------------   ---------------
+      no           False          "no"
+      yes          True           "yes"
+      No           False          "no"
+      Yes          True           "yes"
+
+    The coercion is applied recursively to ALL values
+    throughout the entire nested structure so that no
+    boolean survives to reach Pydantic field validation.
+
+    This function is applied as a mode="before" validator
+    on every top-level model so that coercion happens
+    before Pydantic attempts to validate any field type,
+    including list[str] fields that would reject a bool.
+
+    Args:
+        data: Any Python object (dict, list, scalar).
+
+    Returns:
+        The same structure with all booleans replaced
+        by their string equivalents.
+    """
+    if isinstance(data, dict):
+        return {
+            key: _coerce_bools_in_dict(value)
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [
+            _coerce_bools_in_dict(item)
+            for item in data
+        ]
+    if isinstance(data, bool):
+        return _BOOL_TO_STR[data]
+    return data
+
+
+# ─────────────────────────────────────────────
 # MDP Parameter Schema Models
 # ─────────────────────────────────────────────
 
@@ -94,76 +151,20 @@ class MDPParameterSchema(BaseModel):
     depends_on: Optional[dict[str, DependencyRule]] = None
     notes: Optional[str] = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def coerce_bool_to_str_in_value_lists(
-        cls, values: Any
-    ) -> Any:
-        """
-        YAML automatically parses bare 'no' and 'yes' tokens
-        as Python booleans (False and True respectively).
-        This validator coerces them back to their string
-        equivalents before Pydantic validates the field types.
-
-        Affected fields:
-          - allowed_values  (list of strings)
-          - forbidden_values (list of strings)
-          - recommended     (scalar string/float/int)
-
-        Example YAML that triggers this:
-          allowed_values: [no]       # parsed as [False]
-          forbidden_values: [yes]    # parsed as [True]
-          recommended: no            # parsed as False
-
-        After coercion:
-          allowed_values: ["no"]
-          forbidden_values: ["yes"]
-          recommended: "no"
-        """
-        if not isinstance(values, dict):
-            return values
-
-        bool_to_str: dict[bool, str] = {
-            True: "yes",
-            False: "no",
-        }
-
-        # Coerce list fields
-        for field_name in (
-            "allowed_values",
-            "forbidden_values",
-            "recommended_values",
-        ):
-            raw = values.get(field_name)
-            if isinstance(raw, list):
-                values[field_name] = [
-                    bool_to_str[item]
-                    if isinstance(item, bool)
-                    else item
-                    for item in raw
-                ]
-
-        # Coerce scalar recommended value
-        rec = values.get("recommended")
-        if isinstance(rec, bool):
-            values["recommended"] = bool_to_str[rec]
-
-        return values
-
     @model_validator(mode="after")
     def validate_enum_has_allowed_values(
         self,
     ) -> "MDPParameterSchema":
         """
         Enum parameters must declare their allowed values.
-        Without allowed_values, the schema checker cannot
+        Without allowed_values the schema checker cannot
         validate whether a proposed MDP value is permitted.
         """
         if self.type == ParameterType.ENUM:
             if not self.allowed_values:
                 raise ValueError(
-                    f"Enum parameter must define "
-                    f"allowed_values"
+                    "Enum parameter must define "
+                    "allowed_values"
                 )
         return self
 
@@ -172,8 +173,9 @@ class MDPParameterSchema(BaseModel):
         self,
     ) -> "MDPParameterSchema":
         """
-        Numeric parameters must declare at least one bound
-        (min or max) so the range validator can check values.
+        Numeric parameters must declare at least one
+        bound (min or max) so the range validator can
+        check proposed values.
         """
         if self.type in (
             ParameterType.FLOAT,
@@ -181,8 +183,8 @@ class MDPParameterSchema(BaseModel):
         ):
             if self.min is None and self.max is None:
                 raise ValueError(
-                    f"Numeric parameter must define "
-                    f"at least one of min or max"
+                    "Numeric parameter must define "
+                    "at least one of min or max"
                 )
         return self
 
@@ -221,6 +223,31 @@ class PhaseSchema(BaseModel):
     constraints: MDPSectionSchema
     position_restraints: Optional[MDPSectionSchema] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_all_bools_to_strings(
+        cls, values: Any
+    ) -> Any:
+        """
+        Recursively coerce all boolean values in the
+        entire PhaseSchema input dict to their string
+        equivalents before Pydantic validates any field.
+
+        Must be applied at the PhaseSchema level —
+        the outermost model — because Pydantic propagates
+        validation top-down through nested models. By the
+        time a mode="before" validator on a nested model
+        (MDPSectionSchema or MDPParameterSchema) would
+        fire, Pydantic has already attempted to coerce
+        list[str] fields and rejected boolean values.
+
+        Applying the coercion here, before any nested
+        model is instantiated, guarantees that no boolean
+        value survives to reach field validation anywhere
+        in the PhaseSchema tree.
+        """
+        return _coerce_bools_in_dict(values)
+
 
 # ─────────────────────────────────────────────
 # Force Field Compatibility Models
@@ -248,35 +275,17 @@ class MDPRequirements(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def coerce_bool_to_str_in_mdp_requirements(
+    def coerce_bools_in_mdp_requirements(
         cls, values: Any
     ) -> Any:
         """
-        Coerce boolean values in MDP requirements fields.
-        Specifically handles DispCorr: no which YAML parses
-        as DispCorr: False.
+        Coerce boolean values in MDP requirements.
+        Applied here because MDPRequirements is
+        instantiated from ForceFieldSchema which has
+        its own top-level coercion, but also may be
+        instantiated directly in tests or other contexts.
         """
-        if not isinstance(values, dict):
-            return values
-
-        bool_to_str: dict[bool, str] = {
-            True: "yes",
-            False: "no",
-        }
-
-        for field_name in (
-            "DispCorr",
-            "vdw_modifier",
-            "coulombtype",
-            "vdwtype",
-            "critical_note",
-            "notes",
-        ):
-            val = values.get(field_name)
-            if isinstance(val, bool):
-                values[field_name] = bool_to_str[val]
-
-        return values
+        return _coerce_bools_in_dict(values)
 
 
 class ForceFieldSchema(BaseModel):
@@ -287,11 +296,22 @@ class ForceFieldSchema(BaseModel):
     reference: Optional[str] = None
     type: str
     gromacs_directory: Optional[str] = None
-    suitable_for: dict[str, SystemSuitability]
-    recommended_water_models: dict[
-        str, Union[str, list[str]]
-    ]
-    recommended_ions: dict[str, str]
+    purpose: Optional[str] = None
+
+    # Required for standalone biomolecular force fields
+    # (AMBER, CHARMM, GROMOS, OPLS).
+    # Optional for small molecule parameterization tools
+    # (GAFF, GAFF2, CGenFF) which do not define water
+    # models or ion parameters independently.
+    suitable_for: dict[str, SystemSuitability] = Field(
+        default_factory=dict
+    )
+    recommended_water_models: Optional[
+        dict[str, Union[str, list[str]]]
+    ] = None
+    recommended_ions: Optional[
+        dict[str, str]
+    ] = None
     known_limitations: list[str] = Field(
         default_factory=list
     )
@@ -299,6 +319,77 @@ class ForceFieldSchema(BaseModel):
         MDPRequirements
     ] = None
     notes: Optional[str] = None
+
+    # Small molecule FF specific fields.
+    # Present in GAFF, GAFF2, CGenFF but not in
+    # standalone biomolecular force fields.
+    compatible_protein_force_fields: Optional[
+        list[str]
+    ] = None
+    preferred_with: Optional[str] = None
+    charge_method_required: Optional[str] = None
+    tools_for_parameterization: Optional[
+        list[str]
+    ] = None
+    penalty_score_guidance: Optional[
+        dict[str, str]
+    ] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bools_in_force_field(
+        cls, values: Any
+    ) -> Any:
+        """
+        Coerce boolean values throughout the force field
+        dict before Pydantic validates any nested model.
+        Handles DispCorr: no in mdp_specific_requirements
+        and any other boolean YAML tokens.
+        """
+        return _coerce_bools_in_dict(values)
+
+    @model_validator(mode="after")
+    def validate_standalone_ff_has_water_and_ions(
+        self,
+    ) -> "ForceFieldSchema":
+        """
+        Standalone biomolecular force fields (all-atom,
+        united-atom) must define recommended_water_models
+        and recommended_ions.
+
+        Small molecule force fields (type contains the
+        substring 'small molecule') are parameterization
+        tools that supplement a primary force field and
+        are exempt from this requirement.
+
+        Examples:
+          'all-atom'                → standalone → required
+          'united-atom'             → standalone → required
+          'all-atom small molecule' → tool       → optional
+        """
+        is_small_molecule_ff = (
+            "small molecule" in self.type.lower()
+        )
+        if not is_small_molecule_ff:
+            if self.recommended_water_models is None:
+                raise ValueError(
+                    f"Standalone force field "
+                    f"'{self.full_name}' must define "
+                    f"recommended_water_models. "
+                    f"If this is a small molecule "
+                    f"parameterization tool, set "
+                    f"type to include 'small molecule'."
+                )
+            if self.recommended_ions is None:
+                raise ValueError(
+                    f"Standalone force field "
+                    f"'{self.full_name}' must define "
+                    f"recommended_ions. "
+                    f"If this is a small molecule "
+                    f"parameterization tool, set "
+                    f"type to include 'small molecule'."
+                )
+        return self
 
 
 class WaterModelProperties(BaseModel):
@@ -323,17 +414,44 @@ class WaterModelSchema(BaseModel):
     gromacs_water_model_flag: Optional[str] = None
     notes: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bools_in_water_model(
+        cls, values: Any
+    ) -> Any:
+        """Coerce boolean YAML tokens in water model
+        data before field validation."""
+        return _coerce_bools_in_dict(values)
+
 
 class IonParameterSchema(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     reference: str
     ions_covered: list[str]
-    parameterized_with: Union[str, list[str]]
+
+    # Optional because some advanced ion models
+    # (e.g. Li-Merz 12-6-4) do not specify a single
+    # water model they were parameterized with, or
+    # list compatibility separately via
+    # compatible_water_models instead.
+    parameterized_with: Optional[
+        Union[str, list[str]]
+    ] = None
+
     compatible_water_models: Optional[list[str]] = None
     compatible_force_fields: Optional[list[str]] = None
     not_recommended_with: Optional[list[str]] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bools_in_ion_parameters(
+        cls, values: Any
+    ) -> Any:
+        """Coerce boolean YAML tokens in ion parameter
+        data before field validation."""
+        return _coerce_bools_in_dict(values)
 
 
 class CompatibilityEntry(BaseModel):
@@ -350,6 +468,15 @@ class CompatibilityEntry(BaseModel):
     rating: CompatibilityRating
     notes: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bools_in_compatibility_entry(
+        cls, values: Any
+    ) -> Any:
+        """Coerce boolean YAML tokens in compatibility
+        entry data before field validation."""
+        return _coerce_bools_in_dict(values)
+
 
 class ForbiddenCombination(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -361,40 +488,76 @@ class ForbiddenCombination(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def coerce_bool_in_combination(
+    def coerce_bools_in_forbidden_combination(
         cls, values: Any
     ) -> Any:
         """
-        Coerce boolean values inside the combination dict.
-        YAML may parse values like DispCorr: no as False.
+        Coerce boolean values inside the combination dict
+        and all other fields. YAML parses DispCorr: no
+        as False — this must be "no" for string matching.
         """
-        if not isinstance(values, dict):
-            return values
+        return _coerce_bools_in_dict(values)
 
-        bool_to_str: dict[bool, str] = {
-            True: "yes",
-            False: "no",
-        }
 
-        combo = values.get("combination")
-        if isinstance(combo, dict):
-            values["combination"] = {
-                k: bool_to_str[v]
-                if isinstance(v, bool)
-                else v
-                for k, v in combo.items()
-            }
+class SystemTypeCompatibility(BaseModel):
+    """
+    Represents the compatibility entries for a single
+    system type (e.g. standard_folded_protein) in the
+    compatibility matrix.
 
-        return values
+    The YAML structure for each system type is:
+
+        standard_folded_protein:
+          description: >
+            Globular, well-folded protein...
+          top_choices:
+            - force_field: amber99sb-ildn
+              water: TIP3P
+              rating: RECOMMENDED
+              ...
+
+    The description and top_choices keys are siblings
+    under the system type key. This model captures both.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    description: Optional[str] = None
+    top_choices: list[CompatibilityEntry] = Field(
+        default_factory=list
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bools_in_system_type(
+        cls, values: Any
+    ) -> Any:
+        """Coerce boolean YAML tokens before field
+        validation."""
+        return _coerce_bools_in_dict(values)
 
 
 class CompatibilityMatrixSchema(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     protein_simulations: dict[
-        str, list[CompatibilityEntry]
+        str, SystemTypeCompatibility
     ]
     forbidden_combinations: list[ForbiddenCombination]
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bools_in_matrix(
+        cls, values: Any
+    ) -> Any:
+        """
+        Coerce boolean YAML tokens throughout the entire
+        compatibility matrix before field validation.
+        Applied at this level to catch any booleans in
+        the protein_simulations or forbidden_combinations
+        sections before their nested models are
+        instantiated.
+        """
+        return _coerce_bools_in_dict(values)
 
 
 # ─────────────────────────────────────────────
@@ -500,7 +663,8 @@ class CommonMistakesRegistry(BaseModel):
     ) -> list[CommonMistake]:
         """
         Return all mistakes applicable to a given phase.
-        Includes mistakes with no phase restriction.
+        Includes mistakes with no phase restriction
+        (applicable_phases is None).
         """
         return [
             m for m in self.get_all()

@@ -1,109 +1,142 @@
 production_md:
   description: >
-    The actual data-collection phase. All analysis is performed on this
-    trajectory. No position restraints. Ensemble must correctly sample
-    the NPT or NVT statistical mechanical ensemble. Must follow successful
-    NPT equilibration with converged density and pressure.
+    Production MD phase. The simulation from which all
+    scientific analysis is performed. Must follow
+    successful NPT equilibration with converged
+    temperature and density. Position restraints MUST
+    be removed. Velocities are read from the NPT
+    checkpoint file — they must NOT be regenerated.
+    The barostat must be switched from Berendsen to
+    Parrinello-Rahman (or c-rescale) to correctly
+    sample the NPT ensemble. All MDP parameters must
+    be identical to NPT equilibration except for the
+    barostat, position restraints, and nsteps.
 
   prerequisites:
     must_follow: npt_equilibration
     required_input_files:
-      - npt_output.gro
-      - npt_output.cpt
-      - topology.top
+      - npt.gro
+      - npt.cpt
+      - topol.top
     continuation: true
-    convergence_checks_required:
-      density_converged: true
-      pressure_converged: true
-      temperature_converged: true
+    posre_itp_required: false
     notes: >
-      Do NOT start production MD if NPT density has not converged.
-      Check density plot from NPT — it should be stable with small
-      fluctuations around ~1.0 g/cm³ for aqueous protein systems.
+      Production MD continues from the NPT checkpoint.
+      The -t npt.cpt flag in gmx grompp reads velocities
+      from the NPT checkpoint. The -c npt.gro flag
+      provides the final NPT coordinates. The posre.itp
+      file is NOT required — position restraints must
+      be absent in production MD. Verify that density
+      and temperature have converged in the NPT phase
+      before starting production.
 
   run_control:
     parameters:
       integrator:
         type: enum
         required: true
-        allowed_values: [md, sd]
+        allowed_values:
+          - md
+          - sd
+        forbidden_values:
+          - steep
+          - cg
+          - l-bfgs
         recommended: md
-        forbidden_values: [steep, cg, l-bfgs, bd]
         notes: >
-          md (leap-frog) is standard for production. sd (Langevin dynamics)
-          is an alternative that provides implicit thermostatting but
-          alters the dynamics — use only if explicitly required by the
-          scientific question (e.g., enhanced sampling, implicit solvent
-          comparison).
-
-      dt:
-        type: float
-        required: true
-        min: 0.001
-        max: 0.004
-        recommended: 0.002
-        unit: ps
-        notes: >
-          2 fs standard with h-bonds constraints. 4 fs possible with
-          hydrogen mass repartitioning (HMR) — requires modified topology.
-          Never exceed 2 fs without HMR. Maintain consistency with
-          equilibration phases.
-        depends_on:
-          constraints:
-            parameter: constraints
-            if_value: h-bonds
-            then_max: 0.002
-          hmr_applied:
-            parameter: hmr_applied
-            if_value: true
-            then_max: 0.004
+          md (leap-frog integrator) is the standard
+          choice. Must match the integrator used in
+          NVT and NPT equilibration phases for
+          thermodynamic consistency.
 
       nsteps:
         type: integer
         required: true
         min: 500000
-        max: 50000000000
+        max: 500000000
         recommended: 5000000
-        unit: steps
-        derived_time:
-          formula: nsteps * dt
-          min_time_ns: 1.0
-          recommended_time_ns: 10.0
-          notes: >
-            Minimum 1 ns for any meaningful analysis. 10-100 ns for
-            standard protein conformational studies. 1+ µs for folding
-            or large conformational changes. The required simulation
-            length is highly system- and question-dependent.
+        notes: >
+          Number of MD steps. With dt = 0.002 ps,
+          5000000 steps = 10 ns. Minimum recommended
+          production length is 1 ns (500000 steps).
+          Typical production runs are 10-100 ns.
+          Required length depends on the process
+          being studied:
+            local side-chain rotations: 1-10 ns
+            loop motions: 10-100 ns
+            domain motions: 100+ ns
+          Always perform convergence analysis
+          (block averaging of RMSD, Rg, energies)
+          to verify sufficient sampling.
+
+      dt:
+        type: float
+        required: true
+        min: 0.0005
+        max: 0.004
+        recommended: 0.002
+        unit: ps
+        notes: >
+          Integration timestep. Must be identical to
+          NVT and NPT equilibration. 0.002 ps (2 fs)
+          is standard with h-bonds constraints.
 
       continuation:
         type: enum
         required: true
-        allowed_values: ["yes"]
-        forbidden_values: ["no"]
+        allowed_values:
+          - "yes"
+        forbidden_values:
+          - "no"
+        recommended: "yes"
         notes: >
-          MUST be 'yes' — continuing from NPT checkpoint. Ensures
-          correct velocities and box dimensions from equilibrated state.
-
-      comm-mode:
-        type: enum
-        required: false
-        allowed_values: [Linear]
-        recommended: Linear
-        notes: >
-          Linear COM removal is important for production to prevent
-          artificial drift of the system. Angular removal not recommended
-          for periodic boundary condition systems.
-
-      nstcomm:
-        type: integer
-        required: false
-        min: 10
-        max: 100
-        recommended: 100
-        notes: Frequency of COM motion removal. Every 100 steps is standard.
+          MUST be "yes". Production MD continues from
+          the NPT checkpoint. Setting continuation =
+          "no" would cause GROMACS to apply constraints
+          to the initial coordinates, which is
+          incorrect when continuing from a checkpoint.
 
   output_control:
     parameters:
+      nstlog:
+        type: integer
+        required: true
+        min: 100
+        max: 50000
+        recommended: 5000
+        notes: >
+          Write to log file every nstlog steps.
+          5000 steps = 10 ps with dt = 0.002 ps.
+          Less frequent than equilibration to reduce
+          log file size for long production runs.
+
+      nstenergy:
+        type: integer
+        required: true
+        min: 100
+        max: 50000
+        recommended: 5000
+        notes: >
+          Write energies to .edr file every nstenergy
+          steps. 5000 steps = 10 ps with dt = 0.002 ps.
+          Energy data is used for thermodynamic
+          analysis and convergence monitoring.
+
+      nstxout-compressed:
+        type: integer
+        required: true
+        min: 100
+        max: 50000
+        recommended: 5000
+        notes: >
+          Write compressed trajectory every N steps.
+          5000 steps = 10 ps with dt = 0.002 ps.
+          One frame every 10 ps is standard for most
+          structural analyses. Use 500 steps (1 ps)
+          for fast processes or detailed kinetic
+          analysis. Use 50000 steps (100 ps) for
+          very long runs where storage is a concern.
+
       nstxout:
         type: integer
         required: false
@@ -111,9 +144,12 @@ production_md:
         max: 50000
         recommended: 0
         notes: >
-          Full precision output not recommended — use compressed output.
-          Set to non-zero only if full precision coordinates are needed
-          for specific analysis (e.g., free energy calculations).
+          Write full-precision coordinates every N
+          steps. 0 disables full-precision output —
+          use compressed output (nstxout-compressed)
+          instead for storage efficiency. Enable only
+          if full precision is required for specific
+          analyses.
 
       nstvout:
         type: integer
@@ -122,9 +158,10 @@ production_md:
         max: 50000
         recommended: 0
         notes: >
-          Velocity output rarely needed for standard analysis.
-          Enable only for specific analyses requiring velocities
-          (e.g., velocity autocorrelation functions).
+          Write velocities every N steps. 0 disables
+          velocity output. Enable only if velocity
+          data is required for specific analyses
+          (e.g. velocity autocorrelation functions).
 
       nstfout:
         type: integer
@@ -133,188 +170,197 @@ production_md:
         max: 50000
         recommended: 0
         notes: >
-          Force output generates very large files. Disable unless
-          required for specific analysis.
-
-      nstlog:
-        type: integer
-        required: true
-        min: 500
-        max: 10000
-        recommended: 5000
-        notes: >
-          Less frequent logging acceptable for long production runs.
-          5000 steps (10 ps at 2 fs) is standard.
-
-      nstenergy:
-        type: integer
-        required: true
-        min: 500
-        max: 10000
-        recommended: 5000
-        notes: >
-          Energy output for monitoring simulation health during production.
-          5000 steps (10 ps) provides sufficient resolution for drift
-          detection.
-
-      nstxout-compressed:
-        type: integer
-        required: true
-        min: 500
-        max: 50000
-        recommended: 5000
-        unit: steps
-        derived_time:
-          formula: nstxout-compressed * dt
-          recommended_interval_ps: 10.0
-        notes: >
-          Primary trajectory output for analysis. 5000 steps (10 ps at
-          2 fs) is standard — provides good time resolution without
-          excessive file sizes. For fast processes (< 1 ns timescale),
-          reduce to 500-1000 steps. For very long runs (> 1 µs), increase
-          to 10000-50000 steps.
-
-      compressed-x-grps:
-        type: string
-        required: false
-        recommended_values: [System, Protein]
-        notes: >
-          Writing only 'Protein' instead of 'System' dramatically reduces
-          trajectory file size for large solvated systems. Acceptable if
-          solvent analysis is not required. Use 'System' if water structure
-          or ion dynamics are part of the analysis.
+          Write forces every N steps. 0 disables
+          force output. Enable only if force data
+          is required for specific analyses.
 
   neighbor_searching:
     parameters:
       cutoff-scheme:
         type: enum
         required: true
-        allowed_values: [Verlet]
-        forbidden_values: [group]
-        notes: Verlet mandatory — same as all other phases.
+        allowed_values:
+          - Verlet
+        forbidden_values:
+          - group
+        recommended: Verlet
+        notes: >
+          Verlet is mandatory. Must match all
+          equilibration phases.
 
       nstlist:
         type: integer
         required: true
         min: 10
-        max: 80
+        max: 40
         recommended: 10
         notes: >
-          10 is standard. GROMACS auto-tunes nstlist with Verlet scheme
-          for GPU runs (typically increases to 20-80 for better GPU
-          utilization). Allow auto-tuning for production runs.
+          Update neighbor list every nstlist steps.
+          10 is standard with the Verlet scheme.
+          Must match equilibration phases.
 
-      rlist:
+      rcoulomb:
         type: float
-        required: false
+        required: true
         min: 0.8
         max: 1.6
         recommended: 1.0
         unit: nm
-        notes: Auto-adjusted by GROMACS with Verlet scheme.
+        notes: >
+          Coulomb cutoff. MUST be identical to the
+          values used in NVT and NPT equilibration.
+          Changing cutoffs between phases introduces
+          energy discontinuities and invalidates
+          the equilibration.
+
+      rvdw:
+        type: float
+        required: true
+        min: 0.8
+        max: 1.6
+        recommended: 1.0
+        unit: nm
+        must_equal: rcoulomb
+        notes: >
+          VdW cutoff. Must equal rcoulomb and must
+          be identical to all equilibration phases.
+
+      pbc:
+        type: enum
+        required: true
+        allowed_values:
+          - xyz
+        forbidden_values:
+          - "no"
+          - xy
+        recommended: xyz
+        notes: >
+          Full 3D periodic boundary conditions.
+          Mandatory for all explicit solvent
+          simulations.
 
   electrostatics:
     parameters:
       coulombtype:
         type: enum
         required: true
-        allowed_values: [PME]
-        forbidden_values: [Cut-off, Reaction-Field]
+        allowed_values:
+          - PME
+        forbidden_values:
+          - Cut-off
+          - Reaction-Field
+        recommended: PME
         notes: >
-          PME is mandatory for production MD of solvated biomolecular
-          systems. No exceptions for standard protein-water simulations.
-          Must be consistent with equilibration phases.
-
-      rcoulomb:
-        type: float
-        required: true
-        min: 0.9
-        max: 1.2
-        recommended: 1.0
-        unit: nm
-        must_equal: rvdw
-        notes: >
-          Must be consistent with equilibration phases. Changing cutoff
-          between equilibration and production introduces artifacts.
+          PME is mandatory. Must match all
+          equilibration phases.
 
       pme-order:
         type: integer
         required: false
         min: 4
-        max: 6
+        max: 8
         recommended: 4
-        notes: Must be consistent with equilibration phases.
+        notes: >
+          PME interpolation order. Must match all
+          equilibration phases.
 
       fourierspacing:
         type: float
         required: false
-        min: 0.10
-        max: 0.16
+        min: 0.1
+        max: 0.2
         recommended: 0.16
         unit: nm
-        notes: Must be consistent with equilibration phases.
+        notes: >
+          Grid spacing for PME FFT. Must match all
+          equilibration phases.
 
   vdw:
     parameters:
       vdwtype:
         type: enum
         required: true
-        allowed_values: [Cut-off]
+        allowed_values:
+          - Cut-off
+          - PME
         recommended: Cut-off
-        notes: Must be consistent with equilibration phases.
+        notes: >
+          Must match all equilibration phases.
 
       rvdw:
         type: float
         required: true
-        min: 0.9
-        max: 1.2
+        min: 0.8
+        max: 1.6
         recommended: 1.0
         unit: nm
         must_equal: rcoulomb
-        notes: Must be consistent with equilibration phases.
 
       vdw-modifier:
         type: enum
         required: false
-        allowed_values: [Potential-shift]
+        allowed_values:
+          - Potential-shift
+          - Force-switch
+          - Potential-switch
+          - None
         recommended: Potential-shift
-        notes: Must be consistent with equilibration phases.
+        notes: >
+          Must match all equilibration phases.
+          Potential-shift for AMBER/OPLS/GROMOS.
+          Force-switch for CHARMM36/36m.
 
       DispCorr:
         type: enum
-        required: true
-        allowed_values: [EnerPres]
+        required: false
+        allowed_values:
+          - "no"
+          - EnerPres
+          - Ener
         recommended: EnerPres
-        forbidden_values: ["no"]
         notes: >
-          Mandatory for NPT production. Critical for correct density,
-          pressure, and thermodynamic properties.
+          Must match all equilibration phases.
+          EnerPres for AMBER/OPLS/GROMOS. Must be
+          "no" for CHARMM36/36m. Critical for
+          correct density and pressure in NPT
+          production simulations.
 
   temperature_coupling:
     parameters:
       tcoupl:
         type: enum
         required: true
-        allowed_values: [v-rescale, nose-hoover]
+        allowed_values:
+          - nose-hoover
+          - v-rescale
+          - andersen
+        forbidden_values:
+          - berendsen
+          - "no"
         recommended: nose-hoover
-        forbidden_values: ["no", berendsen, andersen]
         notes: >
-          Nose-Hoover is RECOMMENDED for production MD — it correctly
-          samples the canonical (NVT) ensemble and produces physically
-          meaningful temperature fluctuations. v-rescale is acceptable
-          and widely used but introduces a stochastic term.
-          Berendsen is FORBIDDEN for production — it suppresses energy
-          fluctuations and does not sample the correct ensemble, leading
-          to artifacts in thermodynamic properties.
+          Nose-Hoover is the recommended thermostat
+          for production MD — it correctly samples
+          the canonical ensemble and produces correct
+          kinetic energy fluctuations. v-rescale is
+          an acceptable alternative. Berendsen is
+          FORBIDDEN in production MD — it does not
+          sample the correct ensemble and produces
+          incorrect heat capacity and temperature
+          fluctuation statistics. MUST NOT be "no".
 
       tc-grps:
         type: string
         required: true
-        recommended_values:
-          - "Protein Non-Protein"
+        allowed_values:
+          - Protein Non-Protein
+          - Protein_DNA Non-Protein
+          - System
+        recommended: Protein Non-Protein
         notes: >
-          Must be consistent with equilibration phases.
-          Changing coupling groups between phases introduces artifacts.
+          Must match equilibration tc-grps setting
+          exactly. Changing coupling groups between
+          phases is not permitted.
 
       tau-t:
         type: float
@@ -324,10 +370,12 @@ production_md:
         recommended: 0.5
         unit: ps
         notes: >
-          0.5 ps recommended for Nose-Hoover in production (longer than
-          equilibration to allow correct ensemble fluctuations).
-          0.1 ps acceptable for v-rescale. Longer tau-t = weaker coupling
-          = more physical dynamics but slower temperature control.
+          Temperature coupling time constant.
+          0.5-1.0 ps is recommended for Nose-Hoover
+          in production MD. 0.1 ps is acceptable for
+          v-rescale. Longer time constants give
+          weaker coupling and more physical kinetic
+          energy fluctuations.
 
       ref-t:
         type: float
@@ -336,45 +384,63 @@ production_md:
         max: 370.0
         recommended: 300.0
         unit: K
-        notes: Must be identical to equilibration phases.
+        notes: >
+          Target temperature. MUST be identical to
+          the ref-t values used in NVT and NPT
+          equilibration. Temperature inconsistency
+          across phases is a critical error.
 
   pressure_coupling:
     parameters:
       pcoupl:
         type: enum
         required: true
-        allowed_values: [parrinello-rahman, c-rescale]
+        allowed_values:
+          - parrinello-rahman
+          - c-rescale
+          - mttk
+        forbidden_values:
+          - berendsen
+          - "no"
         recommended: parrinello-rahman
-        forbidden_values: ["no", berendsen, mttk]
         notes: >
-          Parrinello-Rahman is MANDATORY for production NPT — it correctly
-          samples the isothermal-isobaric ensemble. Berendsen is FORBIDDEN
-          for production as it does not produce correct pressure fluctuations
-          and leads to artifacts in compressibility and volume fluctuations.
-          c-rescale (GROMACS 2021+) is an excellent alternative combining
-          correct ensemble sampling with better stability.
+          Parrinello-Rahman is the recommended
+          barostat for production MD — it correctly
+          samples the isothermal-isobaric (NPT)
+          ensemble and produces correct volume and
+          pressure fluctuation statistics. c-rescale
+          (GROMACS 2021+) is an acceptable alternative
+          that also samples the correct ensemble.
+          Berendsen is FORBIDDEN in production MD —
+          it suppresses pressure fluctuations and
+          produces incorrect compressibility and
+          volume fluctuation statistics. MUST NOT
+          be "no" for NPT production simulations.
 
       pcoupltype:
         type: enum
         required: true
-        allowed_values: [isotropic, semiisotropic]
+        allowed_values:
+          - isotropic
+          - semiisotropic
+          - anisotropic
         recommended: isotropic
         notes: >
-          Must be consistent with NPT equilibration phase.
-          isotropic for globular proteins; semiisotropic for membranes.
+          Must match NPT equilibration pcoupltype.
+          isotropic for standard protein-water
+          systems. semiisotropic for membrane systems.
 
       tau-p:
         type: float
         required: true
-        min: 1.0
-        max: 5.0
+        min: 0.5
+        max: 10.0
         recommended: 2.0
         unit: ps
         notes: >
-          2.0 ps is standard for Parrinello-Rahman. Values below 1.0 ps
-          can cause instability with Parrinello-Rahman, especially if
-          starting from a system not fully equilibrated with this barostat.
-          This is why Berendsen is used first during NPT equilibration.
+          Pressure coupling time constant. 2.0 ps
+          is standard for Parrinello-Rahman. Must
+          match NPT equilibration value.
 
       ref-p:
         type: float
@@ -383,45 +449,71 @@ production_md:
         max: 2.0
         recommended: 1.0
         unit: bar
-        notes: Must be identical to NPT equilibration phase.
+        notes: >
+          Target pressure. MUST be identical to the
+          ref-p value used in NPT equilibration.
+          Pressure inconsistency between NPT and
+          production is a critical error.
 
       compressibility:
         type: float
         required: true
         min: 1.0e-6
-        max: 1.0e-3
+        max: 1.0e-4
         recommended: 4.5e-5
         unit: bar^-1
-        notes: Must be identical to NPT equilibration phase.
+        notes: >
+          Isothermal compressibility of water.
+          MUST be identical to the value used in
+          NPT equilibration.
 
   velocity_generation:
     parameters:
       gen-vel:
         type: enum
         required: true
-        allowed_values: ["no"]
-        forbidden_values: ["yes"]
+        allowed_values:
+          - "no"
+        forbidden_values:
+          - "yes"
+        recommended: "no"
         notes: >
-          MUST be 'no' — velocities read from NPT checkpoint.
-          Regenerating velocities for production would discard all
-          equilibration and introduce severe artifacts.
+          MUST be "no". Velocities are read from the
+          NPT checkpoint file specified with the -t
+          flag in gmx grompp. Regenerating velocities
+          would discard all equilibration and restart
+          the simulation from scratch, invalidating
+          the entire equilibration procedure.
 
   constraints:
     parameters:
       constraints:
         type: enum
         required: true
-        allowed_values: [h-bonds, all-bonds]
+        allowed_values:
+          - h-bonds
+          - all-bonds
+          - h-angles
+          - all-angles
+        forbidden_values:
+          - none
         recommended: h-bonds
-        forbidden_values: [none]
-        notes: Must be consistent with equilibration phases.
+        notes: >
+          Must be identical to NVT and NPT
+          equilibration constraints setting. Changing
+          constraints between phases alters the
+          effective degrees of freedom and introduces
+          thermodynamic inconsistencies.
 
       constraint-algorithm:
         type: enum
-        required: true
-        allowed_values: [LINCS, SHAKE]
+        required: false
+        allowed_values:
+          - LINCS
+          - SHAKE
         recommended: LINCS
-        notes: Must be consistent with equilibration phases.
+        notes: >
+          Must match all equilibration phases.
 
       lincs-order:
         type: integer
@@ -430,57 +522,40 @@ production_md:
         max: 8
         recommended: 4
         notes: >
-          Increase to 6 for production runs if any LINCS warnings
-          were observed during equilibration.
+          LINCS constraint order. 4 is standard.
+          6 for higher accuracy in long production
+          runs. Must match equilibration phases.
 
       lincs-iter:
         type: integer
         required: false
         min: 1
-        max: 2
+        max: 4
         recommended: 1
-        notes: Standard value. Increase to 2 only if LINCS warnings persist.
+        notes: >
+          Number of LINCS correction iterations.
+          Must match equilibration phases.
 
   position_restraints:
     parameters:
       define:
         type: string
         required: true
-        allowed_values: [""]
-        forbidden_values: ["-DPOSRES", "-DPOSRES_HEAVY"]
+        allowed_values:
+          - ""
+        forbidden_values:
+          - -DPOSRES
+          - -DPOSRES_HEAVY
+        recommended: ""
         notes: >
-          Position restraints MUST be removed for production MD.
-          Any remaining restraints would artificially constrain the
-          system and invalidate all structural and dynamic analysis.
-          This is one of the most common and impactful mistakes in
-          MD simulation setup.
-
-  cross_phase_consistency:
-    description: >
-      Parameters that must be identical to equilibration phases.
-      Checked by the context propagation tool in Layer 2.
-    must_match_all_phases:
-      - rcoulomb
-      - rvdw
-      - coulombtype
-      - vdwtype
-      - pme-order
-      - fourierspacing
-      - constraints
-      - constraint-algorithm
-      - DispCorr
-    must_match_nvt_npt:
-      - ref-t
-      - tc-grps
-    must_match_npt:
-      - ref-p
-      - compressibility
-      - pcoupltype
-    barostat_progression:
-      npt_equilibration: [berendsen, c-rescale]
-      production_md: [parrinello-rahman, c-rescale]
-      notes: >
-        The Berendsen to Parrinello-Rahman progression is a
-        well-established best practice. Using Parrinello-Rahman
-        directly from a poorly equilibrated structure causes large
-        pressure oscillations and potential simulation crashes.
+          Position restraints MUST be absent in
+          production MD. The define parameter must
+          be empty or absent entirely. Position
+          restraints artificially constrain the
+          solute and prevent sampling of the true
+          conformational ensemble. All structural
+          and dynamic analysis from a restrained
+          trajectory would be invalid — RMSD, RMSF,
+          radius of gyration, and any conformational
+          analysis would reflect the restrained
+          rather than the free system.
