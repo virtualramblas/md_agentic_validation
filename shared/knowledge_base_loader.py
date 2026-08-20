@@ -531,7 +531,8 @@ class KnowledgeBase:
             "four_site_models",
             "five_site_models",
         ]
-        # Keys within a group dict that are not model entries
+        # Keys within a group dict that are not model
+        # entries
         non_model_keys = {
             "water_model_selection_guide",
             "water_structure_files",
@@ -661,7 +662,9 @@ class KnowledgeBase:
             description: ...              ← filtered out
             protein_simulations:          ← matrix data
               standard_folded_protein:
-                - force_field: ...
+                description: ...
+                top_choices:
+                  - force_field: ...
             forbidden_combinations:       ← matrix data
               - id: FC001
                 combination: ...
@@ -705,39 +708,101 @@ class KnowledgeBase:
         """
         Load the common mistakes registry.
 
-        The file contains 'critical_errors' and 'warnings'
-        lists directly at the top level, plus a
-        'cross_phase_consistency_mistakes' dict whose
-        entries are flattened into the appropriate list
-        based on their severity field.
+        Supports two YAML structures for critical_errors
+        and warnings sections:
+
+        Pure list (correct structure):
+            critical_errors:
+              - id: CM001
+                severity: ERROR
+                message: ...
+
+        Mapping keyed by mistake ID (legacy structure):
+            critical_errors:
+              description: >
+                ...
+              CM001:
+                id: CM001
+                severity: ERROR
+                message: ...
+
+        The mapping structure is converted to a list by
+        extracting the dict values and skipping any
+        non-dict entries (e.g. description strings).
+
+        Additionally flattens cross_phase_consistency_
+        mistakes into the appropriate list based on
+        each entry's severity field.
 
         File structure:
             description: ...
             metadata: ...
-            critical_errors:          ← list of mistakes
-              - id: CM001
+            critical_errors:          ← list or mapping
+              - id: CM001             ← list form
                 severity: ERROR
-                ...
-            warnings:                 ← list of mistakes
-              - id: CM004
+            warnings:                 ← list or mapping
+              - id: CM013
                 severity: WARNING
-                ...
             cross_phase_consistency_mistakes:
-              CC001:                  ← flattened into
-                severity: ERROR       ← critical_errors
-                ...
+              CC001:                  ← always a mapping
+                id: CC001
+                severity: ERROR
         """
         raw = self._load_yaml("common_mistakes.yaml")
 
-        critical_errors: list[dict[str, Any]] = list(
+        def _extract_mistake_list(
+            raw_section: Any,
+        ) -> list[dict[str, Any]]:
+            """
+            Extract a list of mistake dicts from either
+            a pure list or a mapping-keyed structure.
+
+            Pure list:
+                [{"id": "CM001", ...}, {"id": "CM002"}]
+                → returned as-is (non-dict items dropped)
+
+            Mapping keyed by ID:
+                {"description": "...", "CM001": {...}}
+                → values extracted, non-dict items
+                  (e.g. the description string) dropped
+
+            Args:
+                raw_section: The raw value of
+                    critical_errors or warnings from
+                    the YAML file.
+
+            Returns:
+                List of mistake dicts ready for Pydantic
+                validation.
+            """
+            if isinstance(raw_section, list):
+                # Correct structure — pure list
+                # Drop any non-dict items defensively
+                return [
+                    item for item in raw_section
+                    if isinstance(item, dict)
+                ]
+            if isinstance(raw_section, dict):
+                # Legacy structure — mapping keyed by ID
+                # Extract values, skip non-dict entries
+                # such as description strings
+                return [
+                    v for v in raw_section.values()
+                    if isinstance(v, dict)
+                ]
+            return []
+
+        critical_errors = _extract_mistake_list(
             raw.get("critical_errors", [])
         )
-        warnings: list[dict[str, Any]] = list(
+        warnings = _extract_mistake_list(
             raw.get("warnings", [])
         )
 
         # Flatten cross-phase consistency mistakes into
         # the appropriate list based on their severity.
+        # This section always uses a mapping structure
+        # keyed by mistake ID (CC001, CC002, etc.).
         cross_phase = raw.get(
             "cross_phase_consistency_mistakes", {}
         )
@@ -754,6 +819,13 @@ class KnowledgeBase:
                     critical_errors.append(mistake_data)
                 else:
                     warnings.append(mistake_data)
+
+        if not critical_errors and not warnings:
+            raise KnowledgeBaseError(
+                "common_mistakes.yaml: no mistakes "
+                "found in critical_errors or warnings "
+                "sections. Verify the file structure."
+            )
 
         mistakes_data = {
             "critical_errors": critical_errors,

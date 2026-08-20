@@ -1,525 +1,438 @@
 description: >
-  Registry of the most common and impactful mistakes in GROMACS MD
-  simulation setup. Used by the CommonMistakesChecker tool in Layer 1
-  as a post-processing step applied on top of schema validation.
-  Each entry defines a unique mistake ID, the condition that triggers
-  it, the severity, the message returned to the agent, and a
-  correction suggestion. Mistakes are organized by category and
-  severity.
+  Registry of common mistakes in GROMACS MDP file
+  configuration. Used by the MDP validator to detect
+  errors and warnings in proposed simulation setups.
+  Each entry defines the mistake ID, severity, the
+  condition that triggers it, the error message, and
+  a correction suggestion.
 
 metadata:
-  total_mistakes: 20
-  mistake_id_prefix: CM
-  categories:
-    - barostat_thermostat
-    - position_restraints
-    - continuation
-    - cutoffs_and_electrostatics
-    - constraints
-    - equilibration_duration
-    - force_field_specific
-    - ensemble_consistency
+  version: "1.0"
+  total_critical_errors: 12
+  total_warnings: 8
+  total_cross_phase: 3
 
 
 critical_errors:
-  description: >
-    Mistakes that will produce physically incorrect results or
-    cause simulation failure. Must be resolved before proceeding.
-
-  CM001:
-    id: CM001
+  - id: CM001
     name: Berendsen barostat in production MD
     category: barostat_thermostat
     severity: ERROR
     applicable_phases:
       - production_md
     check_condition: >
-      pcoupl == "berendsen" AND phase == "production_md"
+      pcoupl == berendsen AND
+      phase == production_md
     message: >
-      Berendsen barostat (pcoupl = berendsen) is set for production
-      MD. The Berendsen barostat does not sample the correct
-      isothermal-isobaric (NPT) ensemble — it suppresses pressure
-      fluctuations and produces incorrect compressibility and volume
-      fluctuation statistics. All thermodynamic analysis from this
-      trajectory would be invalid.
-      Use Parrinello-Rahman or c-rescale for production MD.
+      Berendsen barostat does not sample the correct
+      NPT ensemble. It suppresses pressure fluctuations
+      and produces incorrect compressibility and volume
+      fluctuation statistics. Must not be used in
+      production MD.
     correction_suggestion: >
-      Change pcoupl to parrinello-rahman (recommended) or c-rescale
-      (GROMACS 2021+) in the production MDP file.
-      Note: if switching from Berendsen NPT equilibration to
-      Parrinello-Rahman production, ensure NPT equilibration has
-      fully converged first to avoid pressure oscillations at the
-      start of production.
-    reference: >
-      Basconi & Shirts, JCTC 2013 — demonstrates ensemble artifacts
-      from Berendsen barostat.
+      Change pcoupl to parrinello-rahman (recommended)
+      or c-rescale (GROMACS 2021+). Both correctly
+      sample the isothermal-isobaric ensemble.
 
-  CM002:
-    id: CM002
+  - id: CM002
     name: Position restraints active in production MD
     category: position_restraints
     severity: ERROR
     applicable_phases:
       - production_md
     check_condition: >
-      ("-DPOSRES" in define OR "-DPOSRES_HEAVY" in define)
-      AND phase == "production_md"
+      define contains -DPOSRES AND
+      phase == production_md
     message: >
-      Position restraints are active during production MD
-      (define = '{define_value}'). Position restraints artificially
-      constrain the solute and prevent sampling of the true
-      conformational ensemble. All structural and dynamic analysis
-      from this trajectory would be invalid — RMSD, RMSF, radius
-      of gyration, and any conformational analysis would reflect
-      the restrained rather than the free system.
+      Position restraints are active in production MD.
+      This artificially constrains the solute and
+      prevents sampling of the true conformational
+      ensemble. All structural and dynamic analysis
+      from a restrained trajectory is invalid.
     correction_suggestion: >
-      Remove the define = -DPOSRES line from the production MDP
-      file entirely, or set define = (empty string).
-      Position restraints should only be present during NVT and
-      NPT equilibration phases.
+      Remove define = -DPOSRES (or -DPOSRES_HEAVY)
+      from the production MD MDP file. The define
+      parameter should be empty or absent entirely
+      in production MD.
 
-  CM003:
-    id: CM003
-    name: Velocity generation in continuation run
-    category: continuation
+  - id: CM003
+    name: Velocity regeneration in continuation run
+    category: velocity_generation
     severity: ERROR
     applicable_phases:
       - npt_equilibration
       - production_md
     check_condition: >
-      gen-vel == "yes" AND continuation == "yes"
+      gen-vel == yes AND
+      continuation == yes
     message: >
-      Velocity generation is enabled (gen-vel = yes) in a
-      continuation run (continuation = yes). These settings are
-      mutually exclusive. In a continuation run, velocities are
-      read from the checkpoint file. Enabling gen-vel would
-      discard the checkpoint velocities and regenerate them from
-      a Maxwell-Boltzmann distribution, effectively restarting
-      the simulation from scratch and discarding all prior
-      equilibration.
+      Velocities are being regenerated in a
+      continuation run. This discards all previous
+      equilibration and restarts the simulation from
+      scratch, invalidating the entire equilibration
+      procedure.
     correction_suggestion: >
-      Set gen-vel = no in the MDP file. Velocities will be
-      correctly read from the checkpoint file specified with
-      the -t flag in gmx grompp.
+      Set gen-vel = no. Velocities must be read from
+      the checkpoint file specified with the -t flag
+      in gmx grompp.
 
-  CM004:
-    id: CM004
-    name: No position restraints during NVT equilibration
-    category: position_restraints
-    severity: WARNING
+  - id: CM004
+    name: No temperature coupling in MD simulation
+    category: barostat_thermostat
+    severity: ERROR
     applicable_phases:
       - nvt_equilibration
+      - npt_equilibration
+      - production_md
     check_condition: >
-      "-DPOSRES" not in define
-      AND "-DPOSRES_HEAVY" not in define
-      AND phase == "nvt_equilibration"
+      tcoupl == no AND
+      integrator == md
     message: >
-      Position restraints are not active during NVT equilibration
-      (define does not contain -DPOSRES). Position restraints on
-      solute heavy atoms are strongly recommended during NVT
-      equilibration to prevent the solute from moving while the
-      solvent equilibrates around it. Without restraints, the
-      solute may undergo unphysical distortion before the solvent
-      has had time to equilibrate, leading to poor starting
-      conditions for NPT equilibration.
+      Temperature coupling is disabled in an MD
+      simulation. Without a thermostat the system
+      will not maintain the target temperature and
+      energy will drift.
     correction_suggestion: >
-      Add define = -DPOSRES to the NVT MDP file.
-      Ensure posre.itp was generated by pdb2gmx and is included
-      in the topology file with the correct force constants
-      (typically 1000 kJ/mol/nm² on all heavy atoms).
+      Set tcoupl to v-rescale (recommended for
+      equilibration) or nose-hoover (recommended
+      for production MD).
 
-  CM005:
-    id: CM005
-    name: Pressure coupling active during NVT equilibration
+  - id: CM005
+    name: Pressure coupling active during NVT
     category: barostat_thermostat
     severity: ERROR
     applicable_phases:
       - nvt_equilibration
     check_condition: >
-      pcoupl != "no" AND phase == "nvt_equilibration"
+      pcoupl != no AND
+      phase == nvt_equilibration
     message: >
-      Pressure coupling is active during NVT equilibration
-      (pcoupl = '{pcoupl_value}'). The NVT ensemble requires
-      constant volume — applying pressure coupling changes the
-      ensemble to NPT and defeats the purpose of the NVT phase.
-      The volume will fluctuate during what should be a
-      constant-volume equilibration.
+      Pressure coupling is active during NVT
+      equilibration. The NVT ensemble requires
+      constant volume. Applying pressure coupling
+      changes the ensemble to NPT and defeats the
+      purpose of the NVT phase.
     correction_suggestion: >
-      Set pcoupl = no in the NVT MDP file. Pressure coupling
-      should only be introduced in the NPT equilibration phase
-      that follows NVT.
+      Set pcoupl = no in the NVT equilibration
+      MDP file.
 
-  CM006:
-    id: CM006
+  - id: CM006
+    name: CHARMM36 with standard TIP3P water
+    category: force_field_water_compatibility
+    severity: ERROR
+    applicable_phases:
+      - nvt_equilibration
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      force_field contains charmm36 AND
+      water_model == TIP3P (standard)
+    message: >
+      CHARMM36/36m requires CHARMM-modified TIP3P
+      water, not standard TIP3P. Standard TIP3P
+      lacks Lennard-Jones parameters on hydrogen
+      atoms that CHARMM36 requires for correct
+      non-bonded interactions.
+    correction_suggestion: >
+      Replace standard TIP3P with CHARMM-modified
+      TIP3P (tip3p_charmm.itp). Rebuild the solvated
+      system with the correct water model.
+
+  - id: CM007
+    name: CHARMM36 with DispCorr enabled
+    category: force_field_mdp_compatibility
+    severity: ERROR
+    applicable_phases:
+      - nvt_equilibration
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      force_field contains charmm36 AND
+      DispCorr != no
+    message: >
+      CHARMM36/36m uses Force-switch VdW modifier
+      which already handles long-range VdW corrections.
+      Enabling DispCorr double-counts the long-range
+      correction and produces wrong energies and
+      pressures.
+    correction_suggestion: >
+      Set DispCorr = no for all CHARMM36/36m
+      simulations.
+
+  - id: CM008
+    name: Wrong VdW cutoff for CHARMM36
+    category: force_field_mdp_compatibility
+    severity: ERROR
+    applicable_phases:
+      - nvt_equilibration
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      force_field contains charmm36 AND
+      rvdw != 1.2
+    message: >
+      CHARMM36/36m requires rvdw = 1.2 nm with
+      Force-switch modifier and rvdw-switch = 1.0 nm.
+      Using a different cutoff is inconsistent with
+      the force field parameterization.
+    correction_suggestion: >
+      Set rvdw = 1.2, rcoulomb = 1.2,
+      vdw-modifier = Force-switch,
+      rvdw-switch = 1.0 for CHARMM36/36m.
+
+  - id: CM009
+    name: Steepest descent integrator in MD phase
+    category: integrator
+    severity: ERROR
+    applicable_phases:
+      - nvt_equilibration
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      integrator == steep AND
+      phase != energy_minimization
+    message: >
+      Steepest descent integrator is being used in
+      an MD phase. steep is an energy minimization
+      algorithm, not an MD integrator. It does not
+      propagate dynamics and cannot be used for
+      equilibration or production MD.
+    correction_suggestion: >
+      Change integrator to md (leap-frog, standard)
+      or sd (stochastic dynamics / Langevin).
+
+  - id: CM010
+    name: PME electrostatics not used
+    category: electrostatics
+    severity: ERROR
+    applicable_phases:
+      - nvt_equilibration
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      coulombtype != PME AND
+      phase != energy_minimization
+    message: >
+      PME (Particle Mesh Ewald) electrostatics are
+      not being used. Cut-off electrostatics produce
+      severe artifacts in condensed phase simulations
+      including incorrect protein folding, wrong
+      binding affinities, and unphysical dynamics.
+    correction_suggestion: >
+      Set coulombtype = PME for all explicit solvent
+      MD simulations.
+
+  - id: CM011
+    name: No constraints with 2 fs timestep
+    category: constraints
+    severity: ERROR
+    applicable_phases:
+      - nvt_equilibration
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      constraints == none AND
+      dt >= 0.002
+    message: >
+      No bond constraints are applied with a 2 fs
+      timestep. Without h-bond constraints the
+      fastest bond vibrations (O-H, N-H) require
+      a timestep of 0.5-1.0 fs for stable
+      integration. Using 2 fs without constraints
+      will cause LINCS errors or simulation crashes.
+    correction_suggestion: >
+      Set constraints = h-bonds (minimum) for
+      dt = 0.002 ps. Use all-bonds for higher
+      accuracy.
+
+  - id: CM012
     name: Berendsen thermostat in production MD
     category: barostat_thermostat
     severity: ERROR
     applicable_phases:
       - production_md
     check_condition: >
-      tcoupl == "berendsen" AND phase == "production_md"
+      tcoupl == berendsen AND
+      phase == production_md
     message: >
-      Berendsen thermostat (tcoupl = berendsen) is set for
-      production MD. The Berendsen thermostat does not produce
-      the correct canonical (NVT) ensemble — it suppresses
-      kinetic energy fluctuations and produces incorrect heat
-      capacity and temperature fluctuation statistics. All
-      thermodynamic analysis from this trajectory would be
-      invalid.
-      Use v-rescale or Nose-Hoover for production MD.
+      Berendsen thermostat does not sample the
+      correct canonical ensemble. It suppresses
+      kinetic energy fluctuations and produces
+      incorrect heat capacity and temperature
+      fluctuation statistics. Must not be used
+      in production MD.
     correction_suggestion: >
-      Change tcoupl to nose-hoover (recommended for production)
-      or v-rescale (acceptable alternative) in the production
-      MDP file.
-    reference: >
-      Basconi & Shirts, JCTC 2013 — demonstrates ensemble
-      artifacts from Berendsen thermostat.
-
-  CM007:
-    id: CM007
-    name: Inconsistent Coulomb and VdW cutoffs with Verlet scheme
-    category: cutoffs_and_electrostatics
-    severity: ERROR
-    applicable_phases:
-      - energy_minimization
-      - nvt_equilibration
-      - npt_equilibration
-      - production_md
-    check_condition: >
-      rcoulomb != rvdw AND cutoff-scheme == "Verlet"
-    message: >
-      rcoulomb ({rcoulomb_value} nm) and rvdw ({rvdw_value} nm)
-      are not equal. When using the Verlet cutoff scheme, rcoulomb
-      and rvdw must be identical. The Verlet scheme uses a single
-      neighbor list for both electrostatic and VdW interactions,
-      which requires equal cutoff radii.
-    correction_suggestion: >
-      Set both rcoulomb and rvdw to the same value.
-      Recommended: rcoulomb = rvdw = 1.0 nm for AMBER/GROMOS/OPLS.
-      Recommended: rcoulomb = rvdw = 1.2 nm for CHARMM36/36m.
-
-  CM008:
-    id: CM008
-    name: Missing dispersion correction in NPT simulation
-    category: cutoffs_and_electrostatics
-    severity: ERROR
-    applicable_phases:
-      - npt_equilibration
-      - production_md
-    check_condition: >
-      DispCorr == "no"
-      AND pcoupl != "no"
-      AND force_field_family != "charmm"
-    message: >
-      Dispersion correction is disabled (DispCorr = no) in an
-      NPT simulation using a non-CHARMM force field. Long-range
-      dispersion correction is critical for accurate density and
-      pressure in NPT simulations. Omitting it leads to
-      systematically wrong density values (typically 2-5% error)
-      and incorrect pressure. Note: CHARMM force fields should
-      NOT use DispCorr as they use Force-switch VdW modifier.
-    correction_suggestion: >
-      Set DispCorr = EnerPres in the MDP file.
-      EnerPres applies correction to both energy and pressure,
-      which is required for correct NPT thermodynamics.
-
-  CM009:
-    id: CM009
-    name: Timestep too large without bond constraints
-    category: constraints
-    severity: ERROR
-    applicable_phases:
-      - nvt_equilibration
-      - npt_equilibration
-      - production_md
-    check_condition: >
-      dt > 0.001 AND constraints == "none"
-    message: >
-      Timestep dt = {dt_value} ps exceeds the maximum safe value
-      of 0.001 ps when no bond constraints are applied
-      (constraints = none). Without constraints on hydrogen bonds,
-      the fastest bond vibrations (O-H, N-H, C-H at ~10 fs period)
-      require a timestep of 1 fs or less for stable integration.
-      Using dt = 0.002 ps without constraints will cause immediate
-      simulation instability or energy drift.
-    correction_suggestion: >
-      Either:
-      1. Set constraints = h-bonds (recommended) to constrain
-         hydrogen bonds and safely use dt = 0.002 ps, OR
-      2. Reduce dt to 0.001 ps if constraints must remain none.
-
-  CM010:
-    id: CM010
-    name: Insufficient NPT equilibration time
-    category: equilibration_duration
-    severity: WARNING
-    applicable_phases:
-      - npt_equilibration
-    check_condition: >
-      nsteps * dt < 100.0 AND phase == "npt_equilibration"
-    message: >
-      NPT equilibration time {equil_time:.1f} ps (nsteps={nsteps}
-      x dt={dt} ps) is likely insufficient for density convergence.
-      Density typically requires 100-200 ps to converge for simple
-      protein-water systems. Starting production MD before density
-      has converged leads to pressure artifacts and incorrect
-      thermodynamic properties in the production trajectory.
-    correction_suggestion: >
-      Increase nsteps to achieve at least 100 ps of NPT
-      equilibration (nsteps >= {min_nsteps} for dt = {dt} ps).
-      For membrane systems or large complexes, 500 ps to 2 ns
-      may be required.
-
-  CM011:
-    id: CM011
-    name: Deprecated group cutoff scheme
-    category: cutoffs_and_electrostatics
-    severity: ERROR
-    applicable_phases:
-      - energy_minimization
-      - nvt_equilibration
-      - npt_equilibration
-      - production_md
-    check_condition: >
-      cutoff-scheme == "group"
-    message: >
-      The group cutoff scheme (cutoff-scheme = group) is
-      deprecated and has been removed in GROMACS 2021 and later
-      versions. The group scheme has known energy conservation
-      issues and produces incorrect results for many system types.
-      The Verlet cutoff scheme is mandatory in modern GROMACS.
-    correction_suggestion: >
-      Set cutoff-scheme = Verlet in all MDP files.
-      The Verlet scheme is more accurate, better parallelized,
-      and required for GPU acceleration.
-
-  CM012:
-    id: CM012
-    name: Parrinello-Rahman barostat directly after EM or NVT
-    category: barostat_thermostat
-    severity: WARNING
-    applicable_phases:
-      - npt_equilibration
-    check_condition: >
-      pcoupl == "parrinello-rahman"
-      AND phase == "npt_equilibration"
-      AND previous_phase in ["energy_minimization",
-                             "nvt_equilibration"]
-    message: >
-      Parrinello-Rahman barostat is being used for NPT equilibration
-      directly after energy minimization or NVT equilibration.
-      The Parrinello-Rahman barostat can cause large pressure
-      oscillations and simulation instability when the system is
-      far from the target pressure, which is typical immediately
-      after EM or NVT. This can cause the simulation to crash or
-      produce a poorly equilibrated starting structure for
-      production MD.
-    correction_suggestion: >
-      Use Berendsen or c-rescale barostat for NPT equilibration
-      to quickly and stably bring the system to target pressure.
-      Then switch to Parrinello-Rahman for production MD.
-      The Berendsen → Parrinello-Rahman progression is the
-      established best practice for NPT equilibration.
+      Change tcoupl to nose-hoover (recommended)
+      or v-rescale for production MD.
 
 
 warnings:
-  description: >
-    Mistakes that may affect scientific validity or simulation
-    quality but do not cause immediate failure. Should be reviewed
-    before proceeding.
+  - id: CM013
+    name: No position restraints during NVT
+    category: position_restraints
+    severity: WARNING
+    applicable_phases:
+      - nvt_equilibration
+    check_condition: >
+      define does not contain -DPOSRES AND
+      phase == nvt_equilibration
+    message: >
+      Position restraints are not active during
+      NVT equilibration. Without restraints the
+      solute may distort while the solvent
+      equilibrates around it, potentially leading
+      to unphysical starting conformations for
+      production MD.
+    correction_suggestion: >
+      Add define = -DPOSRES to the NVT MDP file
+      to restrain all heavy atoms during
+      equilibration.
 
-  CM013:
-    id: CM013
-    name: Temperature coupling groups not separated
+  - id: CM014
+    name: No position restraints during NPT
+    category: position_restraints
+    severity: WARNING
+    applicable_phases:
+      - npt_equilibration
+    check_condition: >
+      define does not contain -DPOSRES AND
+      phase == npt_equilibration
+    message: >
+      Position restraints are not active during
+      NPT equilibration. The system needs time to
+      equilibrate box volume and density with the
+      solute restrained. Removing restraints before
+      density has converged can lead to poor
+      starting conditions for production MD.
+    correction_suggestion: >
+      Add define = -DPOSRES to the NPT MDP file.
+      Remove restraints only in production MD.
+
+  - id: CM015
+    name: Short NVT equilibration
+    category: simulation_length
+    severity: WARNING
+    applicable_phases:
+      - nvt_equilibration
+    check_condition: >
+      nsteps * dt < 50.0 AND
+      phase == nvt_equilibration
+    message: >
+      NVT equilibration is shorter than 50 ps.
+      This may be insufficient for the system to
+      reach thermal equilibrium, particularly for
+      large or complex systems.
+    correction_suggestion: >
+      Use at least 100 ps (50000 steps with
+      dt = 0.002 ps) for NVT equilibration.
+      Use 500 ps for membrane or large systems.
+
+  - id: CM016
+    name: Short NPT equilibration
+    category: simulation_length
+    severity: WARNING
+    applicable_phases:
+      - npt_equilibration
+    check_condition: >
+      nsteps * dt < 50.0 AND
+      phase == npt_equilibration
+    message: >
+      NPT equilibration is shorter than 50 ps.
+      This may be insufficient for density
+      convergence, particularly for large systems
+      or systems with membranes.
+    correction_suggestion: >
+      Use at least 100 ps (50000 steps with
+      dt = 0.002 ps) for NPT equilibration.
+      Use 500 ps to 2 ns for membrane systems.
+
+  - id: CM017
+    name: Parrinello-Rahman barostat in NPT equilibration
     category: barostat_thermostat
+    severity: WARNING
+    applicable_phases:
+      - npt_equilibration
+    check_condition: >
+      pcoupl == parrinello-rahman AND
+      phase == npt_equilibration
+    message: >
+      Parrinello-Rahman barostat is being used
+      during NPT equilibration. This barostat can
+      cause large pressure oscillations and
+      simulation instability when the system is
+      far from the target pressure, which is
+      common at the start of NPT equilibration.
+    correction_suggestion: >
+      Use berendsen or c-rescale for NPT
+      equilibration. Switch to parrinello-rahman
+      for production MD.
+
+  - id: CM018
+    name: AMBER force field without DispCorr
+    category: force_field_mdp_compatibility
+    severity: WARNING
+    applicable_phases:
+      - npt_equilibration
+      - production_md
+    check_condition: >
+      force_field contains amber AND
+      DispCorr == no
+    message: >
+      AMBER force fields require DispCorr = EnerPres
+      for correct density and pressure in NPT
+      simulations. Without dispersion correction
+      the system density will be slightly incorrect.
+    correction_suggestion: >
+      Set DispCorr = EnerPres for all AMBER force
+      field NPT and production MD simulations.
+
+  - id: CM019
+    name: AMBER force field with Force-switch VdW
+    category: force_field_mdp_compatibility
     severity: WARNING
     applicable_phases:
       - nvt_equilibration
       - npt_equilibration
       - production_md
     check_condition: >
-      tc-grps == "System" OR tc-grps == "Protein"
+      force_field contains amber AND
+      vdw-modifier == Force-switch
     message: >
-      Temperature coupling is applied to the entire system as a
-      single group (tc-grps = '{tc_grps_value}'). Separate
-      temperature coupling groups for solute and solvent are
-      strongly recommended. Coupling everything together can mask
-      energy transfer problems between solute and solvent, and
-      may lead to the hot solvent/cold solute problem where
-      kinetic energy is not properly distributed between components.
+      AMBER force fields use Potential-shift VdW
+      modifier, not Force-switch. Force-switch is
+      specific to CHARMM force fields. Using
+      Force-switch with AMBER gives inconsistent
+      VdW treatment and wrong energies.
     correction_suggestion: >
-      Set tc-grps = Protein Non-Protein for standard protein-water
-      systems. This applies separate thermostats to the protein
-      and the solvent (water + ions), allowing independent
-      temperature monitoring and control of each component.
+      Set vdw-modifier = Potential-shift for all
+      AMBER force field simulations.
 
-  CM014:
-    id: CM014
-    name: Nose-Hoover thermostat during equilibration
-    category: barostat_thermostat
+  - id: CM020
+    name: Large timestep without hydrogen mass repartitioning
+    category: timestep
     severity: WARNING
     applicable_phases:
       - nvt_equilibration
       - npt_equilibration
-    check_condition: >
-      tcoupl == "nose-hoover"
-      AND phase in ["nvt_equilibration", "npt_equilibration"]
-    message: >
-      Nose-Hoover thermostat is being used during equilibration
-      (phase = '{phase_value}'). While Nose-Hoover correctly
-      samples the canonical ensemble, it has a longer equilibration
-      time than v-rescale and can exhibit oscillatory behavior
-      when the system is far from equilibrium. This may result
-      in slower temperature convergence during equilibration.
-    correction_suggestion: >
-      Consider using v-rescale for equilibration phases and
-      switching to Nose-Hoover for production MD. v-rescale
-      converges faster during equilibration while still correctly
-      sampling the canonical ensemble.
-
-  CM015:
-    id: CM015
-    name: No dispersion correction during NVT equilibration
-    category: cutoffs_and_electrostatics
-    severity: WARNING
-    applicable_phases:
-      - nvt_equilibration
-    check_condition: >
-      DispCorr == "no"
-      AND phase == "nvt_equilibration"
-      AND force_field_family != "charmm"
-    message: >
-      Dispersion correction is disabled (DispCorr = no) during
-      NVT equilibration for a non-CHARMM force field. While
-      DispCorr is most critical for NPT simulations (where it
-      affects density and pressure), enabling it consistently
-      across all phases ensures thermodynamic consistency between
-      equilibration and production. Inconsistent DispCorr settings
-      between phases can introduce discontinuities.
-    correction_suggestion: >
-      Set DispCorr = EnerPres in the NVT MDP file for consistency
-      with NPT and production phases. This is harmless during NVT
-      and ensures consistent treatment of long-range VdW across
-      all simulation phases.
-
-  CM016:
-    id: CM016
-    name: Very short NVT equilibration time
-    category: equilibration_duration
-    severity: WARNING
-    applicable_phases:
-      - nvt_equilibration
-    check_condition: >
-      nsteps * dt < 50.0 AND phase == "nvt_equilibration"
-    message: >
-      NVT equilibration time {equil_time:.1f} ps (nsteps={nsteps}
-      x dt={dt} ps) is very short. A minimum of 50 ps is required
-      for simple systems to reach thermal equilibrium. Insufficient
-      NVT equilibration means the system has not reached the target
-      temperature before pressure coupling is introduced in NPT,
-      leading to poor equilibration quality.
-    correction_suggestion: >
-      Increase nsteps to achieve at least 50 ps of NVT
-      equilibration (nsteps >= {min_nsteps} for dt = {dt} ps).
-      100 ps is recommended as standard for most protein systems.
-
-  CM017:
-    id: CM017
-    name: LINCS order too low for production MD
-    category: constraints
-    severity: WARNING
-    applicable_phases:
       - production_md
     check_condition: >
-      lincs-order < 4 AND phase == "production_md"
+      dt > 0.002 AND
+      hydrogen_mass_repartitioning == false
     message: >
-      LINCS constraint order lincs-order = {lincs_order_value}
-      is below the recommended minimum of 4 for production MD.
-      Low LINCS order reduces the accuracy of constraint
-      satisfaction, which can lead to energy drift and
-      inaccurate bond lengths in long simulations.
+      A timestep larger than 2 fs is being used
+      without hydrogen mass repartitioning (HMR).
+      Timesteps above 2 fs require HMR to remain
+      stable. Without HMR the fastest hydrogen
+      bond vibrations will not be correctly
+      integrated.
     correction_suggestion: >
-      Set lincs-order = 4 (standard) or lincs-order = 6
-      (higher accuracy, slightly more expensive) in the
-      production MDP file.
-
-  CM018:
-    id: CM018
-    name: Output frequency too low for meaningful analysis
-    category: equilibration_duration
-    severity: WARNING
-    applicable_phases:
-      - production_md
-    check_condition: >
-      nstxout-compressed * dt > 100.0
-      AND phase == "production_md"
-    message: >
-      Compressed trajectory output frequency is very low:
-      one frame every {frame_interval:.1f} ps
-      (nstxout-compressed = {nstxout_compressed} steps,
-      dt = {dt} ps). This may be insufficient for most
-      structural analyses. Standard recommendation is one
-      frame every 10 ps (nstxout-compressed = 5000 for
-      dt = 0.002 ps).
-    correction_suggestion: >
-      Set nstxout-compressed = {recommended_nstxout} to write
-      one frame every 10 ps. For fast processes (sub-nanosecond
-      timescale), use nstxout-compressed = 500 (1 ps interval).
-
-  CM019:
-    id: CM019
-    name: gen-temp does not match ref-t
-    category: barostat_thermostat
-    severity: WARNING
-    applicable_phases:
-      - nvt_equilibration
-    check_condition: >
-      abs(gen-temp - ref-t) > 1.0
-      AND phase == "nvt_equilibration"
-    message: >
-      Velocity generation temperature gen-temp = {gen_temp} K
-      does not match target temperature ref-t = {ref_t} K
-      (difference = {diff:.1f} K). Generating velocities at a
-      different temperature than the thermostat target causes
-      an immediate thermostat correction at the start of NVT
-      equilibration, wasting equilibration time and potentially
-      causing instability if the difference is large.
-    correction_suggestion: >
-      Set gen-temp = {ref_t} to match ref-t exactly.
-      Both parameters should specify the same target temperature.
-
-  CM020:
-    id: CM020
-    name: Insufficient production MD length for intended analysis
-    category: equilibration_duration
-    severity: WARNING
-    applicable_phases:
-      - production_md
-    check_condition: >
-      nsteps * dt < 1000.0 AND phase == "production_md"
-    message: >
-      Production MD length {prod_time:.1f} ps ({prod_time_ns:.3f} ns)
-      is very short. A minimum of 1 ns is recommended for any
-      meaningful structural analysis. For most protein conformational
-      studies, 10-100 ns is required. Very short production runs
-      may not provide statistically meaningful results and will
-      likely show poor convergence in block averaging analysis.
-    correction_suggestion: >
-      Increase nsteps to achieve at least 1 ns of production MD
-      (nsteps >= {min_nsteps} for dt = {dt} ps).
-      Consider the timescale of the process being studied:
-      local side-chain rotations: 1-10 ns minimum
-      loop motions: 10-100 ns minimum
-      domain motions: 100+ ns minimum
+      Either reduce dt to 0.002 ps, or apply
+      hydrogen mass repartitioning using parmed
+      before running the simulation and set
+      constraints = h-bonds.
 
 
 cross_phase_consistency_mistakes:
-  description: >
-    Mistakes that involve inconsistencies between parameters
-    across multiple simulation phases. Detected by the Context
-    Propagation Checker in Layer 2 but defined here for
-    completeness and reference.
-
   CC001:
     id: CC001
     name: Temperature inconsistency across phases
@@ -527,108 +440,54 @@ cross_phase_consistency_mistakes:
     severity: ERROR
     check_condition: >
       ref-t(NVT) != ref-t(NPT) OR
-      ref-t(NPT) != ref-t(Production) OR
-      gen-temp(NVT) != ref-t(NVT)
+      ref-t(NPT) != ref-t(production)
     message: >
-      Target temperature is inconsistent across simulation phases.
-      NVT ref-t = {nvt_reft} K, NPT ref-t = {npt_reft} K,
-      Production ref-t = {prod_reft} K.
-      Temperature must be identical across all MD phases to
-      maintain thermodynamic consistency. Changing temperature
-      between phases introduces discontinuities and invalidates
-      the equilibration.
+      Target temperature is inconsistent across
+      simulation phases. The ref-t value must be
+      identical in NVT equilibration, NPT
+      equilibration, and production MD. Inconsistent
+      temperatures invalidate the equilibration
+      and introduce thermodynamic discontinuities
+      between phases.
     correction_suggestion: >
-      Set ref-t = {target_temp} K consistently in all MDP files
-      (NVT, NPT, and production). Also verify gen-temp = {target_temp}
-      in the NVT MDP file.
+      Set ref-t to the same value in all MDP files.
+      Standard physiological temperature is 300 K.
 
   CC002:
     id: CC002
-    name: Cutoff inconsistency across phases
-    category: cutoffs_and_electrostatics
-    severity: ERROR
-    check_condition: >
-      rcoulomb(EM) != rcoulomb(NVT) OR
-      rcoulomb(NVT) != rcoulomb(NPT) OR
-      rcoulomb(NPT) != rcoulomb(Production)
-    message: >
-      Coulomb cutoff rcoulomb is inconsistent across simulation
-      phases: EM={em_rc} nm, NVT={nvt_rc} nm, NPT={npt_rc} nm,
-      Production={prod_rc} nm. Cutoff parameters must be identical
-      across all phases to ensure thermodynamic consistency.
-      Changing cutoffs between phases introduces energy
-      discontinuities.
-    correction_suggestion: >
-      Set rcoulomb = {recommended_rc} nm consistently in all
-      MDP files. The same applies to rvdw, coulombtype, vdwtype,
-      vdw-modifier, and DispCorr.
-
-  CC003:
-    id: CC003
-    name: Constraint algorithm inconsistency across phases
-    category: constraints
-    severity: ERROR
-    check_condition: >
-      constraints(NVT) != constraints(NPT) OR
-      constraints(NPT) != constraints(Production)
-    message: >
-      Constraint settings are inconsistent across simulation phases.
-      NVT constraints = '{nvt_constraints}', NPT constraints =
-      '{npt_constraints}', Production constraints =
-      '{prod_constraints}'. Constraint settings must be identical
-      across all MD phases. Changing constraints between phases
-      alters the effective degrees of freedom and introduces
-      thermodynamic inconsistencies.
-    correction_suggestion: >
-      Set constraints = h-bonds consistently in all MD phase
-      MDP files (NVT, NPT, and production).
-
-  CC004:
-    id: CC004
-    name: Pressure target inconsistency between NPT and production
+    name: Pressure inconsistency across phases
     category: ensemble_consistency
     severity: ERROR
     check_condition: >
-      ref-p(NPT) != ref-p(Production) OR
-      compressibility(NPT) != compressibility(Production)
+      ref-p(NPT) != ref-p(production)
     message: >
-      Pressure coupling parameters are inconsistent between NPT
-      equilibration and production MD.
-      NPT ref-p = {npt_refp} bar, Production ref-p = {prod_refp} bar.
-      NPT compressibility = {npt_comp}, Production compressibility
-      = {prod_comp}. These parameters must be identical to ensure
-      the production simulation continues from the correctly
-      equilibrated state.
+      Target pressure is inconsistent between NPT
+      equilibration and production MD. The ref-p
+      value must be identical in NPT equilibration
+      and production MD. Inconsistent pressures
+      introduce thermodynamic discontinuities
+      between phases.
     correction_suggestion: >
-      Set ref-p = {target_pressure} bar and compressibility =
-      {target_comp} consistently in both NPT and production
-      MDP files.
+      Set ref-p to the same value in NPT and
+      production MD MDP files. Standard pressure
+      is 1.0 bar.
 
-  CC005:
-    id: CC005
-    name: Force field specific MDP settings not applied
-    category: force_field_specific
-    severity: ERROR
+  CC003:
+    id: CC003
+    name: Cutoff inconsistency across phases
+    category: ensemble_consistency
+    severity: WARNING
     check_condition: >
-      (force_field_family == "charmm" AND
-       (vdw-modifier != "Force-switch" OR
-        DispCorr != "no" OR
-        rcoulomb != 1.2)) OR
-      (force_field_family == "amber" AND
-       (vdw-modifier != "Potential-shift" OR
-        DispCorr == "no" OR
-        rcoulomb != 1.0))
+      rcoulomb(NVT) != rcoulomb(NPT) OR
+      rcoulomb(NPT) != rcoulomb(production) OR
+      rvdw(NVT) != rvdw(NPT) OR
+      rvdw(NPT) != rvdw(production)
     message: >
-      MDP settings are not consistent with the requirements of
-      the chosen force field family '{ff_family}'.
-      CHARMM requires: rcoulomb=rvdw=1.2 nm, vdw-modifier=Force-switch,
-      rvdw-switch=1.0 nm, DispCorr=no.
-      AMBER requires: rcoulomb=rvdw=1.0 nm, vdw-modifier=Potential-shift,
-      DispCorr=EnerPres.
-      Using wrong settings with a force field produces incorrect
-      energetics and may invalidate all results.
+      Electrostatic or VdW cutoffs are inconsistent
+      across simulation phases. Changing cutoffs
+      between phases introduces energy
+      discontinuities and invalidates the
+      equilibration.
     correction_suggestion: >
-      Apply the following settings for {ff_family} force fields:
-      {required_settings}
-      These settings are defined in the force field compatibility
-      matrix and must be applied consistently across all MDP files.
+      Set rcoulomb and rvdw to identical values
+      in all MDP files (EM, NVT, NPT, production).
