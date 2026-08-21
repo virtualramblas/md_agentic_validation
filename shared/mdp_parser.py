@@ -251,8 +251,7 @@ class MDPParser:
                 f"Duplicate key '{normalised_key}' "
                 f"at line {line_number} — "
                 f"overwriting previous value "
-                f"'{parameters[normalised_key]"
-                f".raw_value}' "
+                f"'{parameters[normalised_key].raw_value}' "
                 f"with '{raw_value}'"
             )
 
